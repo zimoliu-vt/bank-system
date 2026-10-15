@@ -4,7 +4,7 @@
 <main class="page docs"><span class="eyebrow">API DOCUMENTATION</span><h1>Bank System API</h1><p>User payments require a login session created with a card number and password. Management endpoints use <code>X-Admin-Key</code>; lower-level card endpoints use <code>X-API-Key</code>.</p><div class="warning"><strong>Demo only.</strong> This project is not a real bank or payment processor and should not hold real financial data.</div>
 <section class="endpoint"><span class="method post">POST</span><code>/api/auth/login</code><p>Log in with the full card number and password. Retain the returned session cookie and CSRF token.</p><pre>curl -c session.txt -X POST http://127.0.0.1:2501/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"card_number":"4000000000000000","password":"your-password"}'</pre></section>
+  -d '{"card_number":"40000000","password":"your-password"}'</pre></section>
 <section class="endpoint"><span class="method get">GET</span><code>/api/account</code><p>Return the logged-in account, balance, and transaction history.</p><pre>curl -b session.txt http://127.0.0.1:2501/api/account</pre></section>
 <section class="endpoint"><span class="method post">POST</span><code>/api/payments</code><p>Send money from the logged-in card. Use the <code>csrf_token</code> returned by login.</p><pre>curl -b session.txt -X POST http://127.0.0.1:2501/api/payments \
   -H "Content-Type: application/json" \

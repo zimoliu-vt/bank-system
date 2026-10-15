@@ -27,7 +27,7 @@ The development server listens on all local interfaces. Keep port 2501 blocked f
 
 - Management operations require `BANK_ADMIN_KEY` in the `X-Admin-Key` header.
 - Every card has a different generated `bank_card_...` API key.
-- Users log in with their generated 16-digit card number and a hashed password configured by an administrator.
+- Users log in with their generated 8-digit demo card number and a hashed password configured by an administrator.
 - Browser and API payments require an authenticated session plus a CSRF token.
 - Passwords use Werkzeug's `scrypt` hashing and are never stored in plain text.
 - Raw card keys appear only when created or replaced.
@@ -37,3 +37,13 @@ The development server listens on all local interfaces. Keep port 2501 blocked f
 - Deleting a card requires the admin key and a zero balance; its deletion remains in the audit log.
 
 Local `.env`, card data, logs, databases, and backups are excluded from Git.
+
+## Google account linking
+
+Create a Google OAuth 2.0 Web application and register this exact authorized redirect URI:
+
+```text
+http://127.0.0.1:2501/auth/google/callback
+```
+
+Add its client ID and secret to `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. The app requests only `openid email`; it stores the verified email and stable Google account identifier, but does not store access tokens or request permission to read or send Gmail.

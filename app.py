@@ -3,12 +3,14 @@ import hmac
 import secrets
 from functools import wraps
 from pathlib import Path
+from urllib.parse import urlencode
 
+import requests
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 
 from bank import (BankError, authenticate_card, create_card, delete_card, get_card, get_logs, list_cards,
-                  make_payment, make_transaction, replace_card_key, set_card_status,
-                  set_card_login, verify_card_key)
+                  link_google_account, make_payment, make_transaction, replace_card_key,
+                  set_card_status, set_card_login, unlink_google_account, verify_card_key)
 
 
 def load_env():
@@ -28,6 +30,9 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024
 app.config.update(SECRET_KEY=os.environ.get("BANK_SESSION_SECRET", ""), SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Strict")
 ADMIN_KEY = os.environ.get("BANK_ADMIN_KEY", "").strip()
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "http://127.0.0.1:2501/auth/google/callback").strip()
 
 
 def json_body():
@@ -115,7 +120,57 @@ def logout():
 @app.get("/account")
 @user_login_required
 def account():
-    return render_template("account.html", card=get_card(session["card_id"], include_transactions=True))
+    return render_template("account.html", card=get_card(session["card_id"], include_transactions=True), csrf_token=session["csrf_token"], google_configured=bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET), notice=session.pop("account_notice", None))
+
+
+@app.get("/auth/google/start")
+@user_login_required
+def google_start():
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        session["account_notice"] = "Google linking is not configured yet. Add the Google OAuth client ID and secret to .env."
+        return redirect(url_for("account"))
+    state = secrets.token_urlsafe(32)
+    session["google_oauth_state"] = state
+    parameters = {"client_id": GOOGLE_CLIENT_ID, "redirect_uri": GOOGLE_REDIRECT_URI, "response_type": "code", "scope": "openid email", "state": state, "access_type": "online", "prompt": "select_account"}
+    return redirect("https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(parameters))
+
+
+@app.get("/auth/google/callback")
+@user_login_required
+def google_callback():
+    expected_state = session.pop("google_oauth_state", "")
+    supplied_state = request.args.get("state", "")
+    if not expected_state or not supplied_state or not hmac.compare_digest(expected_state, supplied_state):
+        raise BankError("Invalid Google linking state", 403)
+    if request.args.get("error"):
+        session["account_notice"] = "Google linking was cancelled."
+        return redirect(url_for("account"))
+    code = request.args.get("code", "")
+    try:
+        token_response = requests.post("https://oauth2.googleapis.com/token", data={"code": code, "client_id": GOOGLE_CLIENT_ID, "client_secret": GOOGLE_CLIENT_SECRET, "redirect_uri": GOOGLE_REDIRECT_URI, "grant_type": "authorization_code"}, timeout=15)
+        token_response.raise_for_status()
+        access_token = token_response.json()["access_token"]
+        user_response = requests.get("https://openidconnect.googleapis.com/v1/userinfo", headers={"Authorization": f"Bearer {access_token}"}, timeout=15)
+        user_response.raise_for_status()
+        identity = user_response.json()
+    except (requests.RequestException, KeyError, ValueError):
+        raise BankError("Could not verify the Google account", 502)
+    if identity.get("email_verified") is not True:
+        raise BankError("Google email address is not verified", 403)
+    link_google_account(session["card_id"], identity.get("sub"), identity.get("email"))
+    session["account_notice"] = "Google account linked successfully."
+    return redirect(url_for("account"))
+
+
+@app.post("/auth/google/unlink")
+@user_login_required
+def google_unlink():
+    supplied = request.form.get("csrf_token", "")
+    if not supplied or not hmac.compare_digest(session.get("csrf_token", ""), supplied):
+        raise BankError("Invalid session token", 403)
+    unlink_google_account(session["card_id"])
+    session["account_notice"] = "Google account unlinked."
+    return redirect(url_for("account"))
 
 
 @app.get("/management")
@@ -161,7 +216,7 @@ def api_documentation_json():
 
 @app.get("/api/health")
 def health():
-    return jsonify({"status": "ok", "service": "bank-system", "admin_configured": bool(ADMIN_KEY)})
+    return jsonify({"status": "ok", "service": "bank-system", "admin_configured": bool(ADMIN_KEY), "google_linking_configured": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)})
 
 
 @app.get("/api/cards/<int:card_id>")

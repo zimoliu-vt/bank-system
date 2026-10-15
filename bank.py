@@ -61,7 +61,7 @@ def cents_from_amount(value, allow_zero=False):
 
 
 def public_card(card, include_transactions=False):
-    result = {"id": card["id"], "holder": card["holder"], "label": card["label"], "card_number": format_card_number(card["card_number"]), "last4": card["last4"], "currency": card["currency"], "balance": f'{Decimal(card["balance_cents"]) / 100:.2f}', "status": card["status"], "created_at": card["created_at"], "login_configured": bool(card.get("password_hash"))}
+    result = {"id": card["id"], "holder": card["holder"], "label": card["label"], "card_number": format_card_number(card["card_number"]), "last4": card["last4"], "currency": card["currency"], "balance": f'{Decimal(card["balance_cents"]) / 100:.2f}', "status": card["status"], "created_at": card["created_at"], "login_configured": bool(card.get("password_hash")), "google_email": card.get("google_email")}
     if include_transactions:
         result["transactions"] = card.get("transactions", [])
     return result
@@ -81,13 +81,13 @@ def hash_key(api_key, salt_hex=None):
 
 def generate_card_number(existing_numbers):
     while True:
-        first_fifteen = "4" + "".join(str(secrets.randbelow(10)) for _ in range(14))
-        digits = [int(value) for value in first_fifteen]
+        first_seven = "4" + "".join(str(secrets.randbelow(10)) for _ in range(6))
+        digits = [int(value) for value in first_seven]
         total = 0
         for index, digit in enumerate(digits):
             value = digit * 2 if index % 2 == 0 else digit
             total += value - 9 if value > 9 else value
-        number = first_fifteen + str((10 - total % 10) % 10)
+        number = first_seven + str((10 - total % 10) % 10)
         if number not in existing_numbers:
             return number
 
@@ -97,7 +97,7 @@ def read_cards():
     existing = {card.get("card_number") for card in cards if card.get("card_number")}
     changed = False
     for card in cards:
-        if not card.get("card_number"):
+        if len(card.get("card_number", "")) != 8:
             card["card_number"] = generate_card_number(existing)
             card["last4"] = card["card_number"][-4:]
             existing.add(card["card_number"])
@@ -108,7 +108,7 @@ def read_cards():
 
 
 def format_card_number(number):
-    return " ".join(number[index:index + 4] for index in range(0, 16, 4))
+    return " ".join(number[index:index + 4] for index in range(0, 8, 4))
 
 
 def list_cards():
@@ -176,6 +176,32 @@ def authenticate_card(card_number, password):
         if card["status"] != "active":
             raise BankError("This account is frozen", 403)
         write_log("LOGIN", card["id"], "User logged in")
+        return public_card(card)
+
+
+def link_google_account(card_id, google_sub, email):
+    google_sub, email = str(google_sub or "").strip(), str(email or "").strip().lower()
+    if not google_sub or not email:
+        raise BankError("Google did not return a verified account identity", 400)
+    with DATA_LOCK:
+        cards = read_cards()
+        if any(card.get("google_sub") == google_sub and card.get("id") != card_id for card in cards):
+            raise BankError("This Google account is already linked to another card", 409)
+        card = find_card(cards, card_id)
+        card["google_sub"], card["google_email"] = google_sub, email
+        atomic_write(CARDS_FILE, cards)
+        write_log("GOOGLE_LINKED", card_id, f"Linked verified Google email {email}")
+        return public_card(card)
+
+
+def unlink_google_account(card_id):
+    with DATA_LOCK:
+        cards = read_cards()
+        card = find_card(cards, card_id)
+        email = card.pop("google_email", None)
+        card.pop("google_sub", None)
+        atomic_write(CARDS_FILE, cards)
+        write_log("GOOGLE_UNLINKED", card_id, f"Unlinked Google email {email or 'unknown'}")
         return public_card(card)
 
 
