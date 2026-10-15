@@ -1,0 +1,29 @@
+# Secrets and local settings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials/
+
+# Local banking data
+instance/
+data/
+backups/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Editors and operating systems
+.DS_Store
+.vscode/
+.idea/
