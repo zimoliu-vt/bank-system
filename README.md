@@ -1,6 +1,6 @@
 # Bank System
 
-A local Flask demonstration app with card management, deposits and withdrawals, audit logs, and a separate API key for every card.
+A local Flask demonstration app with card management, deposits, withdrawals, card-to-card payments, audit logs, and a separate API key for every card.
 
 > This is an educational demo, not a real bank or payment processor. Do not use real card details, credentials, or financial data.
 
@@ -19,7 +19,9 @@ Edit `.env` and replace the sample `BANK_ADMIN_KEY` with a long random secret. G
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-Run `python app.py`, then open the homepage at <http://127.0.0.1:2501/>, management at <http://127.0.0.1:2501/management>, or API docs at <http://127.0.0.1:2501/api>.
+Run `python app.py`. On this Mac, open <http://127.0.0.1:2501/>. Payments are at <http://127.0.0.1:2501/payments>, management is at <http://127.0.0.1:2501/management>, and API docs are at <http://127.0.0.1:2501/api>. Other devices on the same private network can use `http://YOUR_MAC_PRIVATE_IP:2501/`.
+
+The development server listens on all local interfaces. Keep port 2501 blocked from the public internet and do not configure router port forwarding for this demo.
 
 ## Key security
 

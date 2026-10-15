@@ -6,7 +6,7 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request
 
 from bank import (BankError, create_card, get_card, get_logs, list_cards,
-                  make_transaction, replace_card_key, set_card_status,
+                  make_payment, make_transaction, replace_card_key, set_card_status,
                   verify_card_key)
 
 
@@ -73,6 +73,11 @@ def management():
     return render_template("management.html")
 
 
+@app.get("/payments")
+def payments():
+    return render_template("payments.html")
+
+
 @app.get("/api")
 def api_documentation():
     return render_template("api.html")
@@ -88,6 +93,7 @@ def api_documentation_json():
             {"method": "GET", "path": "/api/health", "auth": "none"},
             {"method": "GET", "path": "/api/cards/<id>", "auth": "card API key"},
             {"method": "POST", "path": "/api/cards/<id>/transactions", "auth": "card API key"},
+            {"method": "POST", "path": "/api/cards/<id>/payments", "auth": "sender card API key"},
             {"method": "GET", "path": "/admin/cards", "auth": "admin key"},
             {"method": "POST", "path": "/admin/cards", "auth": "admin key"},
             {"method": "POST", "path": "/admin/cards/<id>/replace-key", "auth": "admin key"},
@@ -114,6 +120,14 @@ def transact(card_id):
     data = json_body()
     transaction = make_transaction(card_id, data.get("type"), data.get("amount"), data.get("description", ""))
     return jsonify({"status": "success", **transaction}), 201
+
+
+@app.post("/api/cards/<int:card_id>/payments")
+@card_key_required
+def pay(card_id):
+    data = json_body()
+    payment = make_payment(card_id, data.get("to_card_id"), data.get("amount"), data.get("description", ""))
+    return jsonify({"status": "success", **payment}), 201
 
 
 @app.get("/admin/cards")
@@ -150,4 +164,4 @@ def admin_logs():
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=2501, debug=False)
+    app.run(host="0.0.0.0", port=2501, debug=False)

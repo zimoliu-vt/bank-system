@@ -1,12 +1,16 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>API · Bank System</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
-<body><header class="nav"><a class="brand" href="/">Bank System</a><nav><a href="/management">Management</a><a class="active" href="/api">API</a></nav></header>
+<body><header class="nav"><a class="brand" href="/">Bank System</a><nav><a href="/payments">Payments</a><a href="/management">Management</a><a class="active" href="/api">API</a></nav></header>
 <main class="page docs"><span class="eyebrow">API DOCUMENTATION</span><h1>Bank System API</h1><p>Card endpoints use <code>X-API-Key</code>. Management endpoints use <code>X-Admin-Key</code>.</p><div class="warning"><strong>Demo only.</strong> This project is not a real bank or payment processor and should not hold real financial data.</div>
 <section class="endpoint"><span class="method get">GET</span><code>/api/cards/&lt;id&gt;</code><p>Return the authenticated card and its recent transactions.</p><pre>curl -H "X-API-Key: bank_card_..." http://127.0.0.1:2501/api/cards/1</pre></section>
 <section class="endpoint"><span class="method post">POST</span><code>/api/cards/&lt;id&gt;/transactions</code><p>Create a deposit or withdrawal for the authenticated card.</p><pre>curl -X POST http://127.0.0.1:2501/api/cards/1/transactions \
   -H "Content-Type: application/json" \
   -H "X-API-Key: bank_card_..." \
   -d '{"type":"deposit","amount":25.50,"description":"Allowance"}'</pre></section>
+<section class="endpoint"><span class="method post">POST</span><code>/api/cards/&lt;id&gt;/payments</code><p>Pay another active card in the same currency. Authenticate with the sender's card key.</p><pre>curl -X POST http://127.0.0.1:2501/api/cards/1/payments \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: bank_card_..." \
+  -d '{"to_card_id":2,"amount":12.50,"description":"Lunch"}'</pre></section>
 <section class="endpoint"><span class="method post">POST</span><code>/admin/cards</code><p>Create a card. Its response contains the API key exactly once.</p><pre>curl -X POST http://127.0.0.1:2501/admin/cards \
   -H "Content-Type: application/json" \
   -H "X-Admin-Key: YOUR_ADMIN_KEY" \

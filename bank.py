@@ -173,6 +173,41 @@ def make_transaction(card_id, transaction_type, amount, description=""):
         return {"card": public_card(card), "transaction": transaction}
 
 
+def make_payment(from_card_id, to_card_id, amount, description=""):
+    if type(to_card_id) is not int:
+        raise BankError("to_card_id must be an integer")
+    if from_card_id == to_card_id:
+        raise BankError("A card cannot pay itself")
+    amount_cents = cents_from_amount(amount)
+    description = str(description or "").strip()[:160]
+    transfer_id = secrets.token_hex(10)
+    created_at = now()
+    with DATA_LOCK:
+        cards = read_json(CARDS_FILE, [])
+        sender = find_card(cards, from_card_id)
+        recipient = find_card(cards, to_card_id)
+        if sender["status"] != "active":
+            raise BankError("Sender card is frozen", 403)
+        if recipient["status"] != "active":
+            raise BankError("Recipient card is frozen", 403)
+        if sender["currency"] != recipient["currency"]:
+            raise BankError("Cards must use the same currency", 409)
+        if amount_cents > sender["balance_cents"]:
+            raise BankError("Insufficient funds", 409)
+        sender["balance_cents"] -= amount_cents
+        recipient["balance_cents"] += amount_cents
+        amount_text = f"{Decimal(amount_cents) / 100:.2f}"
+        sender_transaction = {"id": secrets.token_hex(8), "transfer_id": transfer_id, "type": "payment_sent", "amount": amount_text, "description": description, "other_card_id": to_card_id, "created_at": created_at}
+        recipient_transaction = {"id": secrets.token_hex(8), "transfer_id": transfer_id, "type": "payment_received", "amount": amount_text, "description": description, "other_card_id": from_card_id, "created_at": created_at}
+        sender.setdefault("transactions", []).insert(0, sender_transaction)
+        recipient.setdefault("transactions", []).insert(0, recipient_transaction)
+        sender["transactions"] = sender["transactions"][:200]
+        recipient["transactions"] = recipient["transactions"][:200]
+        atomic_write(CARDS_FILE, cards)
+        write_log("PAYMENT", from_card_id, f"{amount_text} {sender['currency']} to card {to_card_id}; transfer {transfer_id}")
+        return {"payment": {"transfer_id": transfer_id, "from_card_id": from_card_id, "to_card_id": to_card_id, "amount": amount_text, "currency": sender["currency"], "description": description, "created_at": created_at}, "card": public_card(sender)}
+
+
 def get_logs():
     with DATA_LOCK:
         return read_json(LOGS_FILE, [])
