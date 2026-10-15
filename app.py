@@ -5,7 +5,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
 
-from bank import (BankError, create_card, get_card, get_logs, list_cards,
+from bank import (BankError, create_card, delete_card, get_card, get_logs, list_cards,
                   make_payment, make_transaction, replace_card_key, set_card_status,
                   verify_card_key)
 
@@ -98,6 +98,7 @@ def api_documentation_json():
             {"method": "POST", "path": "/admin/cards", "auth": "admin key"},
             {"method": "POST", "path": "/admin/cards/<id>/replace-key", "auth": "admin key"},
             {"method": "PATCH", "path": "/admin/cards/<id>/status", "auth": "admin key"},
+            {"method": "DELETE", "path": "/admin/cards/<id>", "auth": "admin key; zero balance required"},
             {"method": "GET", "path": "/admin/logs", "auth": "admin key"}
         ]
     })
@@ -155,6 +156,13 @@ def admin_replace_key(card_id):
 @admin_required
 def admin_set_status(card_id):
     return jsonify({"status": "success", "card": set_card_status(card_id, json_body().get("status"))})
+
+
+@app.delete("/admin/cards/<int:card_id>")
+@admin_required
+def admin_delete_card(card_id):
+    deleted = delete_card(card_id)
+    return jsonify({"status": "success", "message": "Card deleted", "card": deleted})
 
 
 @app.get("/admin/logs")

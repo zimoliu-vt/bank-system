@@ -15,4 +15,5 @@
   -H "Content-Type: application/json" \
   -H "X-Admin-Key: YOUR_ADMIN_KEY" \
   -d '{"holder":"Alex Tan","label":"Everyday","initial_balance":100,"currency":"SGD"}'</pre></section>
-<section class="endpoint"><span class="method post">POST</span><code>/admin/cards/&lt;id&gt;/replace-key</code><p>Invalidate the previous card key and return a replacement once.</p></section><p>Machine-readable documentation: <a href="/api.json">/api.json</a></p></main></body></html>
+<section class="endpoint"><span class="method post">POST</span><code>/admin/cards/&lt;id&gt;/replace-key</code><p>Invalidate the previous card key and return a replacement once.</p></section>
+<section class="endpoint"><span class="method delete">DELETE</span><code>/admin/cards/&lt;id&gt;</code><p>Permanently delete a zero-balance card. Requires the admin key.</p></section><p>Machine-readable documentation: <a href="/api.json">/api.json</a></p></main></body></html>

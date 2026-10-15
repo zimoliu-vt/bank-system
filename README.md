@@ -31,5 +31,6 @@ The development server listens on all local interfaces. Keep port 2501 blocked f
 - Only a salted `scrypt` hash is stored in `cards.json`.
 - Key checks use constant-time comparisons.
 - Replacing a key immediately invalidates the previous key.
+- Deleting a card requires the admin key and a zero balance; its deletion remains in the audit log.
 
 Local `.env`, card data, logs, databases, and backups are excluded from Git.

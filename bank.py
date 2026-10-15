@@ -152,6 +152,19 @@ def set_card_status(card_id, status):
         return public_card(card)
 
 
+def delete_card(card_id):
+    with DATA_LOCK:
+        cards = read_json(CARDS_FILE, [])
+        card = find_card(cards, card_id)
+        if card["balance_cents"] != 0:
+            raise BankError("Balance must be zero before deleting a card", 409)
+        deleted = public_card(card)
+        cards.remove(card)
+        atomic_write(CARDS_FILE, cards)
+        write_log("CARD_DELETED", card_id, f'Deleted {card["label"]} for {card["holder"]}')
+        return deleted
+
+
 def make_transaction(card_id, transaction_type, amount, description=""):
     if transaction_type not in {"deposit", "withdrawal"}:
         raise BankError("Type must be deposit or withdrawal")

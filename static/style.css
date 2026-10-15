@@ -42,6 +42,7 @@ input,select { display:block; width:100%; margin-top:7px; border:1px solid #cbd3
 .bank-card footer { align-items:end; }
 .card-actions { display:flex; gap:8px; }
 .bank-card button { padding:7px 10px; border:1px solid #ffffff55; border-radius:8px; background:#ffffff18; color:#fff; cursor:pointer; }
+.bank-card button.danger-button { border-color:#ffb6b6; color:#ffe2e2; }
 .notice { padding:14px 16px; border-radius:10px; background:#e4f3eb; color:#124f3a; margin:16px 0; }
 .notice.error { background:#fae5e5; color:var(--danger); }
 .hidden { display:none; }
@@ -58,6 +59,7 @@ dialog code { display:block; padding:16px; background:#edf0ed; border-radius:10p
 .method { display:inline-block; margin-right:10px; border-radius:6px; padding:5px 8px; font-size:12px; font-weight:850; color:#fff; }
 .method.get { background:#2872b8; }
 .method.post { background:var(--green); }
+.method.delete { background:var(--danger); }
 pre { overflow:auto; background:#17211d; color:#e6eee9; padding:16px; border-radius:10px; line-height:1.55; }
 code { font-family:"SFMono-Regular",Consolas,monospace; }
 @media(max-width:760px) { .hero{padding:40px 24px}.security-grid,.two-column{grid-template-columns:1fr}.nav{padding:0 18px}.nav nav{gap:14px}.hero-shell,.page{padding:40px 16px}.form-row{display:block} }
