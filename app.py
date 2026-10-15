@@ -25,14 +25,9 @@ def load_env():
 
 
 load_env()
-PROJECT_DIR = Path(__file__).resolve().parent
-SSL_CERT_PATH = Path(os.environ.get("BANK_SSL_CERT", PROJECT_DIR / "certs" / "localhost.pem")).expanduser()
-SSL_KEY_PATH = Path(os.environ.get("BANK_SSL_KEY", PROJECT_DIR / "certs" / "localhost-key.pem")).expanduser()
-SSL_ENABLED = SSL_CERT_PATH.is_file() and SSL_KEY_PATH.is_file()
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024
-app.config.update(SECRET_KEY=os.environ.get("BANK_SESSION_SECRET", ""), SESSION_COOKIE_HTTPONLY=True,
-                  SESSION_COOKIE_SAMESITE="Strict", SESSION_COOKIE_SECURE=SSL_ENABLED)
+app.config.update(SECRET_KEY=os.environ.get("BANK_SESSION_SECRET", ""), SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Strict")
 ADMIN_KEY = os.environ.get("BANK_ADMIN_KEY", "").strip()
 
 
@@ -289,7 +284,4 @@ def admin_logs():
 
 
 if __name__ == "__main__":
-    ssl_context = (str(SSL_CERT_PATH), str(SSL_KEY_PATH)) if SSL_ENABLED else None
-    scheme = "https" if SSL_ENABLED else "http"
-    print(f"Bank System running at {scheme}://127.0.0.1:2501")
-    app.run(host="0.0.0.0", port=2501, debug=False, ssl_context=ssl_context)
+    app.run(host="0.0.0.0", port=2501, debug=False)
