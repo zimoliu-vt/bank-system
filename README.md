@@ -19,7 +19,17 @@ Edit `.env` and replace the sample `BANK_ADMIN_KEY` with a long random secret. G
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-Run `python app.py`. On this Mac, open <http://127.0.0.1:2501/>. Payments are at <http://127.0.0.1:2501/payments>, management is at <http://127.0.0.1:2501/management>, and API docs are at <http://127.0.0.1:2501/api>. Other devices on the same private network can use `http://YOUR_MAC_PRIVATE_IP:2501/`.
+### Local HTTPS
+
+Generate a private local certificate once:
+
+```bash
+./scripts/create-local-cert.sh
+```
+
+Then run `python app.py` and open <https://127.0.0.1:2501/>. Payments are at <https://127.0.0.1:2501/payments>, management is at <https://127.0.0.1:2501/management>, and API docs are at <https://127.0.0.1:2501/api>. The generated certificate also includes this Mac's current private IP for access from devices on the same Wi-Fi network.
+
+The fallback OpenSSL certificate is self-signed, so a browser may show a local certificate warning. The private certificate and key stay in `certs/` and are excluded from Git. Delete both files to return to HTTP.
 
 The development server listens on all local interfaces. Keep port 2501 blocked from the public internet and do not configure router port forwarding for this demo.
 
