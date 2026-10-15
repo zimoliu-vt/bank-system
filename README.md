@@ -31,6 +31,7 @@ The development server listens on all local interfaces. Keep port 2501 blocked f
 - Browser and API payments require an authenticated session plus a CSRF token.
 - Payments can be sent from any currency balance the sender owns. Cross-currency payments are never exchanged: the recipient receives the same numeric amount in the selected currency as a separate balance.
 - Users can explicitly exchange money between their own balances using the latest available Frankfurter reference rate.
+- Supported currencies: SGD, USD, EUR, GBP, and CNY.
 - Passwords use Werkzeug's `scrypt` hashing and are never stored in plain text.
 - Raw card keys appear only when created or replaced.
 - Only a salted `scrypt` hash is stored in `cards.json`.

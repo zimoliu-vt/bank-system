@@ -14,7 +14,7 @@ ROOT = Path(__file__).parent
 CARDS_FILE = ROOT / "cards.json"
 LOGS_FILE = ROOT / "logs.json"
 DATA_LOCK = threading.RLock()
-ALLOWED_CURRENCIES = {"SGD", "USD", "EUR", "GBP"}
+ALLOWED_CURRENCIES = {"SGD", "USD", "EUR", "GBP", "CNY"}
 
 
 class BankError(Exception):
