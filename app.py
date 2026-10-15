@@ -135,6 +135,12 @@ def google_start():
     return redirect("https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(parameters))
 
 
+@app.get("/google-setup")
+@user_login_required
+def google_setup():
+    return render_template("google_setup.html", redirect_uri=GOOGLE_REDIRECT_URI, configured=bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET))
+
+
 @app.get("/auth/google/callback")
 @user_login_required
 def google_callback():
