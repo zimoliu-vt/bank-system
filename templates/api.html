@@ -6,7 +6,7 @@
   -H "Content-Type: application/json" \
   -d '{"card_number":"40000000","password":"your-password"}'</pre></section>
 <section class="endpoint"><span class="method get">GET</span><code>/api/account</code><p>Return the logged-in account, balance, and transaction history.</p><pre>curl -b session.txt http://127.0.0.1:2501/api/account</pre></section>
-<section class="endpoint"><span class="method post">POST</span><code>/api/payments</code><p>Send money from the logged-in card. Use the <code>csrf_token</code> returned by login.</p><pre>curl -b session.txt -X POST http://127.0.0.1:2501/api/payments \
+<section class="endpoint"><span class="method post">POST</span><code>/api/payments</code><p>Send money from the logged-in card. Use the <code>csrf_token</code> returned by login. The recipient keeps the original currency as a separate balance; no exchange occurs.</p><pre>curl -b session.txt -X POST http://127.0.0.1:2501/api/payments \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: TOKEN_FROM_LOGIN" \
   -d '{"to_card_id":2,"amount":12.50,"description":"Lunch"}'</pre></section>

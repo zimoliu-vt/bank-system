@@ -61,7 +61,8 @@ def cents_from_amount(value, allow_zero=False):
 
 
 def public_card(card, include_transactions=False):
-    result = {"id": card["id"], "holder": card["holder"], "label": card["label"], "card_number": format_card_number(card["card_number"]), "last4": card["last4"], "currency": card["currency"], "balance": f'{Decimal(card["balance_cents"]) / 100:.2f}', "status": card["status"], "created_at": card["created_at"], "login_configured": bool(card.get("password_hash")), "google_email": card.get("google_email")}
+    balances = card.get("balances", {card["currency"]: card.get("balance_cents", 0)})
+    result = {"id": card["id"], "holder": card["holder"], "label": card["label"], "card_number": format_card_number(card["card_number"]), "last4": card["last4"], "currency": card["currency"], "balance": f'{Decimal(balances.get(card["currency"], 0)) / 100:.2f}', "balances": {currency: f"{Decimal(cents) / 100:.2f}" for currency, cents in sorted(balances.items())}, "status": card["status"], "created_at": card["created_at"], "login_configured": bool(card.get("password_hash")), "google_email": card.get("google_email")}
     if include_transactions:
         result["transactions"] = card.get("transactions", [])
     return result
@@ -101,6 +102,9 @@ def read_cards():
             card["card_number"] = generate_card_number(existing)
             card["last4"] = card["card_number"][-4:]
             existing.add(card["card_number"])
+            changed = True
+        if "balances" not in card:
+            card["balances"] = {card["currency"]: card.get("balance_cents", 0)}
             changed = True
     if changed:
         atomic_write(CARDS_FILE, cards)
@@ -143,7 +147,7 @@ def create_card(holder, label, initial_balance=0, currency="SGD"):
     with DATA_LOCK:
         cards = read_cards()
         card_number = generate_card_number({item["card_number"] for item in cards})
-        card = {"id": max((item.get("id", 0) for item in cards), default=0) + 1, "holder": holder, "label": label, "card_number": card_number, "last4": card_number[-4:], "currency": currency, "balance_cents": balance_cents, "status": "active", "key_salt": salt, "key_hash": key_hash, "created_at": now(), "transactions": []}
+        card = {"id": max((item.get("id", 0) for item in cards), default=0) + 1, "holder": holder, "label": label, "card_number": card_number, "last4": card_number[-4:], "currency": currency, "balance_cents": balance_cents, "balances": {currency: balance_cents}, "status": "active", "key_salt": salt, "key_hash": key_hash, "created_at": now(), "transactions": []}
         cards.append(card)
         atomic_write(CARDS_FILE, cards)
         write_log("CARD_CREATED", card["id"], f"Created {label} for {holder}")
@@ -245,8 +249,8 @@ def delete_card(card_id):
     with DATA_LOCK:
         cards = read_cards()
         card = find_card(cards, card_id)
-        if card["balance_cents"] != 0:
-            raise BankError("Balance must be zero before deleting a card", 409)
+        if any(card.get("balances", {card["currency"]: card.get("balance_cents", 0)}).values()):
+            raise BankError("All currency balances must be zero before deleting a card", 409)
         deleted = public_card(card)
         cards.remove(card)
         atomic_write(CARDS_FILE, cards)
@@ -264,10 +268,12 @@ def make_transaction(card_id, transaction_type, amount, description=""):
         card = find_card(cards, card_id)
         if card["status"] != "active":
             raise BankError("Card is frozen", 403)
-        if transaction_type == "withdrawal" and amount_cents > card["balance_cents"]:
+        balances = card.setdefault("balances", {card["currency"]: card.get("balance_cents", 0)})
+        if transaction_type == "withdrawal" and amount_cents > balances.get(card["currency"], 0):
             raise BankError("Insufficient funds", 409)
-        card["balance_cents"] += amount_cents if transaction_type == "deposit" else -amount_cents
-        transaction = {"id": secrets.token_hex(8), "type": transaction_type, "amount": f"{Decimal(amount_cents) / 100:.2f}", "description": description, "created_at": now()}
+        balances[card["currency"]] = balances.get(card["currency"], 0) + (amount_cents if transaction_type == "deposit" else -amount_cents)
+        card["balance_cents"] = balances[card["currency"]]
+        transaction = {"id": secrets.token_hex(8), "type": transaction_type, "amount": f"{Decimal(amount_cents) / 100:.2f}", "currency": card["currency"], "description": description, "created_at": now()}
         card.setdefault("transactions", []).insert(0, transaction)
         card["transactions"] = card["transactions"][:200]
         atomic_write(CARDS_FILE, cards)
@@ -292,22 +298,25 @@ def make_payment(from_card_id, to_card_id, amount, description=""):
             raise BankError("Sender card is frozen", 403)
         if recipient["status"] != "active":
             raise BankError("Recipient card is frozen", 403)
-        if sender["currency"] != recipient["currency"]:
-            raise BankError("Cards must use the same currency", 409)
-        if amount_cents > sender["balance_cents"]:
+        transfer_currency = sender["currency"]
+        sender_balances = sender.setdefault("balances", {transfer_currency: sender.get("balance_cents", 0)})
+        recipient_balances = recipient.setdefault("balances", {recipient["currency"]: recipient.get("balance_cents", 0)})
+        if amount_cents > sender_balances.get(transfer_currency, 0):
             raise BankError("Insufficient funds", 409)
-        sender["balance_cents"] -= amount_cents
-        recipient["balance_cents"] += amount_cents
+        sender_balances[transfer_currency] -= amount_cents
+        recipient_balances[transfer_currency] = recipient_balances.get(transfer_currency, 0) + amount_cents
+        sender["balance_cents"] = sender_balances.get(sender["currency"], 0)
+        recipient["balance_cents"] = recipient_balances.get(recipient["currency"], 0)
         amount_text = f"{Decimal(amount_cents) / 100:.2f}"
-        sender_transaction = {"id": secrets.token_hex(8), "transfer_id": transfer_id, "type": "payment_sent", "amount": amount_text, "description": description, "other_card_id": to_card_id, "created_at": created_at}
-        recipient_transaction = {"id": secrets.token_hex(8), "transfer_id": transfer_id, "type": "payment_received", "amount": amount_text, "description": description, "other_card_id": from_card_id, "created_at": created_at}
+        sender_transaction = {"id": secrets.token_hex(8), "transfer_id": transfer_id, "type": "payment_sent", "amount": amount_text, "currency": transfer_currency, "description": description, "other_card_id": to_card_id, "created_at": created_at}
+        recipient_transaction = {"id": secrets.token_hex(8), "transfer_id": transfer_id, "type": "payment_received", "amount": amount_text, "currency": transfer_currency, "description": description, "other_card_id": from_card_id, "created_at": created_at}
         sender.setdefault("transactions", []).insert(0, sender_transaction)
         recipient.setdefault("transactions", []).insert(0, recipient_transaction)
         sender["transactions"] = sender["transactions"][:200]
         recipient["transactions"] = recipient["transactions"][:200]
         atomic_write(CARDS_FILE, cards)
-        write_log("PAYMENT", from_card_id, f"{amount_text} {sender['currency']} to card {to_card_id}; transfer {transfer_id}")
-        return {"payment": {"transfer_id": transfer_id, "from_card_id": from_card_id, "to_card_id": to_card_id, "amount": amount_text, "currency": sender["currency"], "description": description, "created_at": created_at}, "card": public_card(sender)}
+        write_log("PAYMENT", from_card_id, f"{amount_text} {transfer_currency} to card {to_card_id}; transfer {transfer_id}; no conversion")
+        return {"payment": {"transfer_id": transfer_id, "from_card_id": from_card_id, "to_card_id": to_card_id, "amount": amount_text, "currency": transfer_currency, "conversion": "none; recipient keeps the original currency", "description": description, "created_at": created_at}, "card": public_card(sender)}
 
 
 def get_logs():

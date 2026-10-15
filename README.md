@@ -29,6 +29,7 @@ The development server listens on all local interfaces. Keep port 2501 blocked f
 - Every card has a different generated `bank_card_...` API key.
 - Users log in with their generated 8-digit demo card number and a hashed password configured by an administrator.
 - Browser and API payments require an authenticated session plus a CSRF token.
+- Cross-currency payments are never exchanged: the recipient receives the original currency as a separate balance.
 - Passwords use Werkzeug's `scrypt` hashing and are never stored in plain text.
 - Raw card keys appear only when created or replaced.
 - Only a salted `scrypt` hash is stored in `cards.json`.

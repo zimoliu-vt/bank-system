@@ -70,6 +70,7 @@ dialog code { display:block; padding:16px; background:#edf0ed; border-radius:10p
 .account-balance { margin-top:46px; }
 .account-balance small { color:#cfe3dc; }
 .account-balance b { margin-top:6px; font-size:36px; }
+.balance-list { display:flex; flex-wrap:wrap; gap:8px 28px; }
 .transactions { margin-top:24px; }
 .google-link { margin-top:24px; display:flex; justify-content:space-between; align-items:center; gap:20px; }
 .google-link h2 { margin-bottom:6px; }
