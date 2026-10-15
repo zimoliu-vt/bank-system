@@ -37,6 +37,7 @@ input,select { display:block; width:100%; margin-top:7px; border:1px solid #cbd3
 .bank-card.frozen { filter:saturate(.25); }
 .bank-card header,.bank-card footer { display:flex; justify-content:space-between; gap:12px; }
 .bank-card h3 { margin:0; }
+.bank-card .card-id { display:inline-block; margin-top:12px; padding:5px 9px; border:1px solid #ffffff45; border-radius:999px; background:#ffffff12; font-size:13px; font-weight:750; }
 .bank-card .balance { font-size:28px; font-weight:800; margin:26px 0 4px; }
 .bank-card footer { align-items:end; }
 .card-actions { display:flex; gap:8px; }
