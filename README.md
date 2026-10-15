@@ -1,6 +1,6 @@
 # Bank System
 
-A local Flask demonstration app with card management, deposits, withdrawals, card-to-card payments, audit logs, and a separate API key for every card.
+A local Flask demonstration app with card-number login, private account pages, transaction history, protected card-to-card payments, audit logs, and a separate API key for every card.
 
 > This is an educational demo, not a real bank or payment processor. Do not use real card details, credentials, or financial data.
 
@@ -27,6 +27,9 @@ The development server listens on all local interfaces. Keep port 2501 blocked f
 
 - Management operations require `BANK_ADMIN_KEY` in the `X-Admin-Key` header.
 - Every card has a different generated `bank_card_...` API key.
+- Users log in with their generated 16-digit card number and a hashed password configured by an administrator.
+- Browser and API payments require an authenticated session plus a CSRF token.
+- Passwords use Werkzeug's `scrypt` hashing and are never stored in plain text.
 - Raw card keys appear only when created or replaced.
 - Only a salted `scrypt` hash is stored in `cards.json`.
 - Key checks use constant-time comparisons.

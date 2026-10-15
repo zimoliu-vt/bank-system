@@ -1,13 +1,14 @@
 import os
 import hmac
+import secrets
 from functools import wraps
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 
-from bank import (BankError, create_card, delete_card, get_card, get_logs, list_cards,
+from bank import (BankError, authenticate_card, create_card, delete_card, get_card, get_logs, list_cards,
                   make_payment, make_transaction, replace_card_key, set_card_status,
-                  verify_card_key)
+                  set_card_login, verify_card_key)
 
 
 def load_env():
@@ -25,6 +26,7 @@ def load_env():
 load_env()
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024
+app.config.update(SECRET_KEY=os.environ.get("BANK_SESSION_SECRET", ""), SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Strict")
 ADMIN_KEY = os.environ.get("BANK_ADMIN_KEY", "").strip()
 
 
@@ -57,6 +59,24 @@ def card_key_required(view):
     return wrapped
 
 
+def user_login_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not session.get("card_id"):
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "Login required"}), 401
+            return redirect(url_for("login", next=request.path))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def verify_csrf():
+    expected = session.get("csrf_token", "")
+    supplied = request.headers.get("X-CSRF-Token", "")
+    if not expected or not supplied or not hmac.compare_digest(expected, supplied):
+        raise BankError("Invalid session token. Refresh the page and try again.", 403)
+
+
 @app.errorhandler(BankError)
 def bank_error(error):
     return jsonify({"error": str(error)}), error.status_code
@@ -67,6 +87,37 @@ def home():
     return render_template("index.html")
 
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "GET":
+        if session.get("card_id"):
+            return redirect(url_for("account"))
+        return render_template("login.html", error=None)
+    try:
+        card = authenticate_card(request.form.get("card_number"), request.form.get("password"))
+    except BankError as error:
+        return render_template("login.html", error=str(error)), error.status_code
+    if card is None:
+        return render_template("login.html", error="Incorrect card number or password"), 401
+    session.clear()
+    session["card_id"] = card["id"]
+    session["csrf_token"] = secrets.token_urlsafe(24)
+    session.permanent = False
+    return redirect(url_for("account"))
+
+
+@app.post("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+@app.get("/account")
+@user_login_required
+def account():
+    return render_template("account.html", card=get_card(session["card_id"], include_transactions=True))
+
+
 @app.get("/management")
 @app.get("/managment")
 def management():
@@ -74,8 +125,9 @@ def management():
 
 
 @app.get("/payments")
+@user_login_required
 def payments():
-    return render_template("payments.html")
+    return render_template("payments.html", card=get_card(session["card_id"]), csrf_token=session["csrf_token"])
 
 
 @app.get("/api")
@@ -87,16 +139,19 @@ def api_documentation():
 def api_documentation_json():
     return jsonify({
         "name": "Bank System API", "version": "1.0",
-        "authentication": {"card_operations": "X-API-Key: bank_card_...", "management_operations": "X-Admin-Key: BANK_ADMIN_KEY"},
+        "authentication": {"user_operations": "Login with card number and password; retain the session cookie", "card_api_operations": "X-API-Key: bank_card_...", "management_operations": "X-Admin-Key: BANK_ADMIN_KEY"},
         "security_note": "Raw card API keys are returned once and stored only as salted hashes.",
         "endpoints": [
             {"method": "GET", "path": "/api/health", "auth": "none"},
             {"method": "GET", "path": "/api/cards/<id>", "auth": "card API key"},
             {"method": "POST", "path": "/api/cards/<id>/transactions", "auth": "card API key"},
-            {"method": "POST", "path": "/api/cards/<id>/payments", "auth": "sender card API key"},
+            {"method": "POST", "path": "/api/auth/login", "auth": "card number and password"},
+            {"method": "GET", "path": "/api/account", "auth": "user session"},
+            {"method": "POST", "path": "/api/payments", "auth": "user session and CSRF token"},
             {"method": "GET", "path": "/admin/cards", "auth": "admin key"},
             {"method": "POST", "path": "/admin/cards", "auth": "admin key"},
             {"method": "POST", "path": "/admin/cards/<id>/replace-key", "auth": "admin key"},
+            {"method": "PUT", "path": "/admin/cards/<id>/login", "auth": "admin key"},
             {"method": "PATCH", "path": "/admin/cards/<id>/status", "auth": "admin key"},
             {"method": "DELETE", "path": "/admin/cards/<id>", "auth": "admin key; zero balance required"},
             {"method": "GET", "path": "/admin/logs", "auth": "admin key"}
@@ -123,11 +178,30 @@ def transact(card_id):
     return jsonify({"status": "success", **transaction}), 201
 
 
-@app.post("/api/cards/<int:card_id>/payments")
-@card_key_required
-def pay(card_id):
+@app.post("/api/auth/login")
+def api_login():
     data = json_body()
-    payment = make_payment(card_id, data.get("to_card_id"), data.get("amount"), data.get("description", ""))
+    card = authenticate_card(data.get("card_number"), data.get("password"))
+    if card is None:
+        return jsonify({"error": "Incorrect card number or password"}), 401
+    session.clear()
+    session["card_id"] = card["id"]
+    session["csrf_token"] = secrets.token_urlsafe(24)
+    return jsonify({"status": "success", "card": card, "csrf_token": session["csrf_token"]})
+
+
+@app.get("/api/account")
+@user_login_required
+def api_account():
+    return jsonify({"card": get_card(session["card_id"], include_transactions=True)})
+
+
+@app.post("/api/payments")
+@user_login_required
+def user_pay():
+    verify_csrf()
+    data = json_body()
+    payment = make_payment(session["card_id"], data.get("to_card_id"), data.get("amount"), data.get("description", ""))
     return jsonify({"status": "success", **payment}), 201
 
 
@@ -150,6 +224,13 @@ def admin_create_card():
 def admin_replace_key(card_id):
     api_key = replace_card_key(card_id)
     return jsonify({"status": "success", "api_key": api_key, "warning": "The previous key no longer works. Save this key now."})
+
+
+@app.put("/admin/cards/<int:card_id>/login")
+@admin_required
+def admin_set_login(card_id):
+    data = json_body()
+    return jsonify({"status": "success", "card": set_card_login(card_id, data.get("password"))})
 
 
 @app.patch("/admin/cards/<int:card_id>/status")

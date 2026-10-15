@@ -8,6 +8,7 @@ import threading
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
+from werkzeug.security import check_password_hash, generate_password_hash
 
 ROOT = Path(__file__).parent
 CARDS_FILE = ROOT / "cards.json"
@@ -60,7 +61,7 @@ def cents_from_amount(value, allow_zero=False):
 
 
 def public_card(card, include_transactions=False):
-    result = {"id": card["id"], "holder": card["holder"], "label": card["label"], "last4": card["last4"], "currency": card["currency"], "balance": f'{Decimal(card["balance_cents"]) / 100:.2f}', "status": card["status"], "created_at": card["created_at"]}
+    result = {"id": card["id"], "holder": card["holder"], "label": card["label"], "card_number": format_card_number(card["card_number"]), "last4": card["last4"], "currency": card["currency"], "balance": f'{Decimal(card["balance_cents"]) / 100:.2f}', "status": card["status"], "created_at": card["created_at"], "login_configured": bool(card.get("password_hash"))}
     if include_transactions:
         result["transactions"] = card.get("transactions", [])
     return result
@@ -78,9 +79,41 @@ def hash_key(api_key, salt_hex=None):
     return salt.hex(), digest.hex()
 
 
+def generate_card_number(existing_numbers):
+    while True:
+        first_fifteen = "4" + "".join(str(secrets.randbelow(10)) for _ in range(14))
+        digits = [int(value) for value in first_fifteen]
+        total = 0
+        for index, digit in enumerate(digits):
+            value = digit * 2 if index % 2 == 0 else digit
+            total += value - 9 if value > 9 else value
+        number = first_fifteen + str((10 - total % 10) % 10)
+        if number not in existing_numbers:
+            return number
+
+
+def read_cards():
+    cards = read_json(CARDS_FILE, [])
+    existing = {card.get("card_number") for card in cards if card.get("card_number")}
+    changed = False
+    for card in cards:
+        if not card.get("card_number"):
+            card["card_number"] = generate_card_number(existing)
+            card["last4"] = card["card_number"][-4:]
+            existing.add(card["card_number"])
+            changed = True
+    if changed:
+        atomic_write(CARDS_FILE, cards)
+    return cards
+
+
+def format_card_number(number):
+    return " ".join(number[index:index + 4] for index in range(0, 16, 4))
+
+
 def list_cards():
     with DATA_LOCK:
-        return [public_card(card) for card in read_json(CARDS_FILE, [])]
+        return [public_card(card) for card in read_cards()]
 
 
 def find_card(cards, card_id):
@@ -92,7 +125,7 @@ def find_card(cards, card_id):
 
 def get_card(card_id, include_transactions=False):
     with DATA_LOCK:
-        return public_card(find_card(read_json(CARDS_FILE, []), card_id), include_transactions)
+        return public_card(find_card(read_cards(), card_id), include_transactions)
 
 
 def create_card(holder, label, initial_balance=0, currency="SGD"):
@@ -108,12 +141,42 @@ def create_card(holder, label, initial_balance=0, currency="SGD"):
     api_key = f"bank_card_{secrets.token_urlsafe(32)}"
     salt, key_hash = hash_key(api_key)
     with DATA_LOCK:
-        cards = read_json(CARDS_FILE, [])
-        card = {"id": max((item.get("id", 0) for item in cards), default=0) + 1, "holder": holder, "label": label, "last4": f"{secrets.randbelow(10000):04d}", "currency": currency, "balance_cents": balance_cents, "status": "active", "key_salt": salt, "key_hash": key_hash, "created_at": now(), "transactions": []}
+        cards = read_cards()
+        card_number = generate_card_number({item["card_number"] for item in cards})
+        card = {"id": max((item.get("id", 0) for item in cards), default=0) + 1, "holder": holder, "label": label, "card_number": card_number, "last4": card_number[-4:], "currency": currency, "balance_cents": balance_cents, "status": "active", "key_salt": salt, "key_hash": key_hash, "created_at": now(), "transactions": []}
         cards.append(card)
         atomic_write(CARDS_FILE, cards)
         write_log("CARD_CREATED", card["id"], f"Created {label} for {holder}")
         return public_card(card), api_key
+
+
+def set_card_login(card_id, password):
+    password = str(password or "")
+    if len(password) < 10:
+        raise BankError("Password must be at least 10 characters")
+    if len(password) > 200:
+        raise BankError("Password is too long")
+    with DATA_LOCK:
+        cards = read_cards()
+        card = find_card(cards, card_id)
+        card["password_hash"] = generate_password_hash(password, method="scrypt")
+        atomic_write(CARDS_FILE, cards)
+        write_log("LOGIN_CONFIGURED", card_id, "Card-number login configured")
+        return public_card(card)
+
+
+def authenticate_card(card_number, password):
+    card_number = "".join(character for character in str(card_number or "") if character.isdigit())
+    password = str(password or "")
+    with DATA_LOCK:
+        cards = read_cards()
+        card = next((item for item in cards if item.get("card_number") == card_number), None)
+        if card is None or not card.get("password_hash") or not check_password_hash(card["password_hash"], password):
+            return None
+        if card["status"] != "active":
+            raise BankError("This account is frozen", 403)
+        write_log("LOGIN", card["id"], "User logged in")
+        return public_card(card)
 
 
 def verify_card_key(card_id, api_key):
@@ -121,7 +184,7 @@ def verify_card_key(card_id, api_key):
         return False
     try:
         with DATA_LOCK:
-            card = find_card(read_json(CARDS_FILE, []), card_id)
+            card = find_card(read_cards(), card_id)
             _, candidate = hash_key(api_key, card["key_salt"])
             return hmac.compare_digest(candidate, card["key_hash"])
     except BankError:
@@ -132,7 +195,7 @@ def replace_card_key(card_id):
     api_key = f"bank_card_{secrets.token_urlsafe(32)}"
     salt, key_hash = hash_key(api_key)
     with DATA_LOCK:
-        cards = read_json(CARDS_FILE, [])
+        cards = read_cards()
         card = find_card(cards, card_id)
         card["key_salt"], card["key_hash"] = salt, key_hash
         atomic_write(CARDS_FILE, cards)
@@ -144,7 +207,7 @@ def set_card_status(card_id, status):
     if status not in {"active", "frozen"}:
         raise BankError("Status must be active or frozen")
     with DATA_LOCK:
-        cards = read_json(CARDS_FILE, [])
+        cards = read_cards()
         card = find_card(cards, card_id)
         card["status"] = status
         atomic_write(CARDS_FILE, cards)
@@ -154,7 +217,7 @@ def set_card_status(card_id, status):
 
 def delete_card(card_id):
     with DATA_LOCK:
-        cards = read_json(CARDS_FILE, [])
+        cards = read_cards()
         card = find_card(cards, card_id)
         if card["balance_cents"] != 0:
             raise BankError("Balance must be zero before deleting a card", 409)
@@ -171,7 +234,7 @@ def make_transaction(card_id, transaction_type, amount, description=""):
     amount_cents = cents_from_amount(amount)
     description = str(description or "").strip()[:160]
     with DATA_LOCK:
-        cards = read_json(CARDS_FILE, [])
+        cards = read_cards()
         card = find_card(cards, card_id)
         if card["status"] != "active":
             raise BankError("Card is frozen", 403)
@@ -196,7 +259,7 @@ def make_payment(from_card_id, to_card_id, amount, description=""):
     transfer_id = secrets.token_hex(10)
     created_at = now()
     with DATA_LOCK:
-        cards = read_json(CARDS_FILE, [])
+        cards = read_cards()
         sender = find_card(cards, from_card_id)
         recipient = find_card(cards, to_card_id)
         if sender["status"] != "active":
