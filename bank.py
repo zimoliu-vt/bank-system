@@ -62,7 +62,7 @@ def cents_from_amount(value, allow_zero=False):
 
 def public_card(card, include_transactions=False):
     balances = card.get("balances", {card["currency"]: card.get("balance_cents", 0)})
-    result = {"id": card["id"], "holder": card["holder"], "label": card["label"], "card_number": format_card_number(card["card_number"]), "last4": card["last4"], "currency": card["currency"], "balance": f'{Decimal(balances.get(card["currency"], 0)) / 100:.2f}', "balances": {currency: f"{Decimal(cents) / 100:.2f}" for currency, cents in sorted(balances.items())}, "status": card["status"], "created_at": card["created_at"], "login_configured": bool(card.get("password_hash")), "google_email": card.get("google_email")}
+    result = {"id": card["id"], "holder": card["holder"], "label": card["label"], "card_number": format_card_number(card["card_number"]), "last4": card["last4"], "currency": card["currency"], "balance": f'{Decimal(balances.get(card["currency"], 0)) / 100:.2f}', "balances": {currency: f"{Decimal(cents) / 100:.2f}" for currency, cents in sorted(balances.items())}, "status": card["status"], "created_at": card["created_at"], "login_configured": bool(card.get("password_hash"))}
     if include_transactions:
         result["transactions"] = card.get("transactions", [])
     return result
@@ -183,32 +183,6 @@ def authenticate_card(card_number, password):
         return public_card(card)
 
 
-def link_google_account(card_id, google_sub, email):
-    google_sub, email = str(google_sub or "").strip(), str(email or "").strip().lower()
-    if not google_sub or not email:
-        raise BankError("Google did not return a verified account identity", 400)
-    with DATA_LOCK:
-        cards = read_cards()
-        if any(card.get("google_sub") == google_sub and card.get("id") != card_id for card in cards):
-            raise BankError("This Google account is already linked to another card", 409)
-        card = find_card(cards, card_id)
-        card["google_sub"], card["google_email"] = google_sub, email
-        atomic_write(CARDS_FILE, cards)
-        write_log("GOOGLE_LINKED", card_id, f"Linked verified Google email {email}")
-        return public_card(card)
-
-
-def unlink_google_account(card_id):
-    with DATA_LOCK:
-        cards = read_cards()
-        card = find_card(cards, card_id)
-        email = card.pop("google_email", None)
-        card.pop("google_sub", None)
-        atomic_write(CARDS_FILE, cards)
-        write_log("GOOGLE_UNLINKED", card_id, f"Unlinked Google email {email or 'unknown'}")
-        return public_card(card)
-
-
 def verify_card_key(card_id, api_key):
     if not isinstance(api_key, str) or len(api_key) > 200:
         return False
@@ -281,7 +255,7 @@ def make_transaction(card_id, transaction_type, amount, description=""):
         return {"card": public_card(card), "transaction": transaction}
 
 
-def make_payment(from_card_id, to_card_id, amount, description=""):
+def make_payment(from_card_id, to_card_id, amount, description="", currency=None):
     if type(to_card_id) is not int:
         raise BankError("to_card_id must be an integer")
     if from_card_id == to_card_id:
@@ -298,8 +272,10 @@ def make_payment(from_card_id, to_card_id, amount, description=""):
             raise BankError("Sender card is frozen", 403)
         if recipient["status"] != "active":
             raise BankError("Recipient card is frozen", 403)
-        transfer_currency = sender["currency"]
-        sender_balances = sender.setdefault("balances", {transfer_currency: sender.get("balance_cents", 0)})
+        sender_balances = sender.setdefault("balances", {sender["currency"]: sender.get("balance_cents", 0)})
+        transfer_currency = str(currency or sender["currency"]).strip().upper()
+        if transfer_currency not in sender_balances:
+            raise BankError(f"No {transfer_currency} balance is available", 409)
         recipient_balances = recipient.setdefault("balances", {recipient["currency"]: recipient.get("balance_cents", 0)})
         if amount_cents > sender_balances.get(transfer_currency, 0):
             raise BankError("Insufficient funds", 409)
@@ -317,6 +293,31 @@ def make_payment(from_card_id, to_card_id, amount, description=""):
         atomic_write(CARDS_FILE, cards)
         write_log("PAYMENT", from_card_id, f"{amount_text} {transfer_currency} to card {to_card_id}; transfer {transfer_id}; no conversion")
         return {"payment": {"transfer_id": transfer_id, "from_card_id": from_card_id, "to_card_id": to_card_id, "amount": amount_text, "currency": transfer_currency, "conversion": "none; recipient keeps the original currency", "description": description, "created_at": created_at}, "card": public_card(sender)}
+
+
+def exchange_balance(card_id, quote):
+    source, target = quote["from_currency"], quote["to_currency"]
+    if source not in ALLOWED_CURRENCIES or target not in ALLOWED_CURRENCIES:
+        raise BankError("Unsupported currency")
+    source_cents = cents_from_amount(quote["amount"])
+    target_cents = cents_from_amount(quote["converted_amount"])
+    with DATA_LOCK:
+        cards = read_cards()
+        card = find_card(cards, card_id)
+        if card["status"] != "active":
+            raise BankError("Card is frozen", 403)
+        balances = card.setdefault("balances", {card["currency"]: card.get("balance_cents", 0)})
+        if source_cents > balances.get(source, 0):
+            raise BankError(f"Insufficient {source} balance", 409)
+        balances[source] -= source_cents
+        balances[target] = balances.get(target, 0) + target_cents
+        card["balance_cents"] = balances.get(card["currency"], 0)
+        transaction = {"id": secrets.token_hex(8), "type": "currency_exchange", "amount": quote["amount"], "currency": source, "converted_amount": quote["converted_amount"], "to_currency": target, "rate": quote["rate"], "rate_date": quote.get("date"), "description": f"Exchanged {source} to {target}", "created_at": now()}
+        card.setdefault("transactions", []).insert(0, transaction)
+        card["transactions"] = card["transactions"][:200]
+        atomic_write(CARDS_FILE, cards)
+        write_log("CURRENCY_EXCHANGE", card_id, f'{quote["amount"]} {source} to {quote["converted_amount"]} {target} at {quote["rate"]}')
+        return {"card": public_card(card), "transaction": transaction, "quote": quote}
 
 
 def get_logs():

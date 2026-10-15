@@ -1,6 +1,6 @@
 # Bank System
 
-A local Flask demonstration app with card-number login, private account pages, transaction history, protected card-to-card payments, audit logs, and a separate API key for every card.
+A local Flask demonstration app with card-number login, private account pages, multi-currency balances, reference-rate currency exchange, transaction history, protected card-to-card payments, audit logs, and a separate API key for every card.
 
 > This is an educational demo, not a real bank or payment processor. Do not use real card details, credentials, or financial data.
 
@@ -29,7 +29,8 @@ The development server listens on all local interfaces. Keep port 2501 blocked f
 - Every card has a different generated `bank_card_...` API key.
 - Users log in with their generated 8-digit demo card number and a hashed password configured by an administrator.
 - Browser and API payments require an authenticated session plus a CSRF token.
-- Cross-currency payments are never exchanged: the recipient receives the original currency as a separate balance.
+- Payments can be sent from any currency balance the sender owns. Cross-currency payments are never exchanged: the recipient receives the same numeric amount in the selected currency as a separate balance.
+- Users can explicitly exchange money between their own balances using the latest available Frankfurter reference rate.
 - Passwords use Werkzeug's `scrypt` hashing and are never stored in plain text.
 - Raw card keys appear only when created or replaced.
 - Only a salted `scrypt` hash is stored in `cards.json`.
@@ -38,13 +39,3 @@ The development server listens on all local interfaces. Keep port 2501 blocked f
 - Deleting a card requires the admin key and a zero balance; its deletion remains in the audit log.
 
 Local `.env`, card data, logs, databases, and backups are excluded from Git.
-
-## Google account linking
-
-Create a Google OAuth 2.0 Web application and register this exact authorized redirect URI:
-
-```text
-http://127.0.0.1:2501/auth/google/callback
-```
-
-Add its client ID and secret to `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. The app requests only `openid email`; it stores the verified email and stable Google account identifier, but does not store access tokens or request permission to read or send Gmail.
