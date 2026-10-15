@@ -8,6 +8,8 @@ secrets/
 credentials/
 
 # Local banking data
+cards.json
+logs.json
 instance/
 data/
 backups/

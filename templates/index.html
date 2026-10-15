@@ -1,14 +1,5 @@
 <!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Bank System</title>
-</head>
-<body>
-    <main>
-        <h1>Bank System</h1>
-        <p>The new project is ready to build.</p>
-    </main>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bank System</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body><header class="nav"><a class="brand" href="/">Bank System</a><nav><a href="/management">Management</a><a href="/api">API</a></nav></header>
+<main class="hero-shell"><section class="hero"><span class="eyebrow">LOCAL DEMO BANK</span><h1>Simple banking with keys that stay private.</h1><p>Each card receives its own API key. A key can access only its matching card, and the server stores a salted hash—not the original secret.</p><div class="actions"><a class="button primary" href="/management">Manage cards</a><a class="button" href="/api">Read API docs</a></div></section>
+<section class="security-grid"><article><strong>One key per card</strong><span>Compromising one key does not expose every card.</span></article><article><strong>Shown only once</strong><span>Save new keys when they are created or replaced.</span></article><article><strong>Hashed at rest</strong><span>Raw card keys are never written to the database.</span></article></section></main></body></html>
