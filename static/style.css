@@ -74,7 +74,11 @@ dialog code { display:block; padding:16px; background:#edf0ed; border-radius:10p
 .balance-list { display:flex; flex-wrap:wrap; gap:8px 28px; }
 .balance-list .empty-balance { color:#cfe3dc; font-size:18px; font-weight:600; }
 .balance-chips { display:flex; flex-wrap:wrap; gap:10px; margin:20px 0; }
-.balance-chips span { background:#fff; border:1px solid var(--line); border-radius:999px; padding:9px 13px; }
+.balance-chips span, .balance-chip { background:#fff; border:1px solid var(--line); border-radius:999px; padding:9px 13px; }
+.balance-chip { color:var(--ink); font:inherit; cursor:pointer; transition:border-color .15s, background .15s, transform .15s; }
+.balance-chip:hover { background:#f8f2e5; border-color:var(--gold); transform:translateY(-1px); }
+.balance-chip:focus-visible { outline:3px solid rgba(224,165,52,.35); outline-offset:2px; }
+.balance-chip.selected { color:var(--green); background:#eef6f1; border-color:var(--green); }
 .rate-note { font-size:13px; }
 .transactions { margin-top:24px; }
 .transaction-list article { display:flex; justify-content:space-between; align-items:center; gap:20px; padding:16px 0; border-top:1px solid var(--line); }
