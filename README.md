@@ -13,7 +13,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` and replace the sample `BANK_ADMIN_KEY` with a long random secret. Generate one with:
+Edit `.env` and replace the sample `BANK_ADMIN_KEY` with a long random secret. `BANK_ADMIN_CARD_NUMBER` identifies the one card allowed to open the browser management page (the default `44808087` is the card formerly known as ID 5). Generate an admin key with:
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(32))"
@@ -25,7 +25,8 @@ The development server listens on all local interfaces. Keep port 2501 blocked f
 
 ## Key security
 
-- Management operations require `BANK_ADMIN_KEY` in the `X-Admin-Key` header.
+- Only the card configured by `BANK_ADMIN_CARD_NUMBER` can open the browser management page. It must still provide `BANK_ADMIN_KEY`; a successful check unlocks that browser session for seven days.
+- API clients can continue to authorize individual management requests with `BANK_ADMIN_KEY` in the `X-Admin-Key` header.
 - Every card has a different generated `bank_card_...` API key.
 - Users log in with their generated 8-digit demo card number and a hashed password configured by an administrator.
 - Users may self-register a new unlinked card; its opening balance is always forced to zero by the server.

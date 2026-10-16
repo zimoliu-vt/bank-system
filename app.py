@@ -1,6 +1,8 @@
 import os
 import hmac
 import secrets
+import time
+from datetime import timedelta
 from decimal import InvalidOperation
 from functools import wraps
 from pathlib import Path
@@ -28,8 +30,11 @@ def load_env():
 load_env()
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024
-app.config.update(SECRET_KEY=os.environ.get("BANK_SESSION_SECRET", ""), SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Strict")
+app.config.update(SECRET_KEY=os.environ.get("BANK_SESSION_SECRET", ""), SESSION_COOKIE_HTTPONLY=True,
+                  SESSION_COOKIE_SAMESITE="Strict", PERMANENT_SESSION_LIFETIME=timedelta(days=7))
 ADMIN_KEY = os.environ.get("BANK_ADMIN_KEY", "").strip()
+ADMIN_CARD_NUMBER = "".join(character for character in os.environ.get("BANK_ADMIN_CARD_NUMBER", "44808087") if character.isdigit())
+ADMIN_AUTH_SECONDS = 7 * 24 * 60 * 60
 
 
 def json_body():
@@ -42,6 +47,10 @@ def json_body():
 def admin_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
+        if admin_session_active():
+            if request.method not in {"GET", "HEAD", "OPTIONS"}:
+                verify_csrf()
+            return view(*args, **kwargs)
         if not ADMIN_KEY:
             return jsonify({"error": "BANK_ADMIN_KEY is not configured", "setup": "Copy .env.example to .env and choose a strong admin key."}), 503
         supplied_key = request.headers.get("X-Admin-Key", "")
@@ -49,6 +58,34 @@ def admin_required(view):
             return jsonify({"error": "Valid X-Admin-Key header required"}), 401
         return view(*args, **kwargs)
     return wrapped
+
+
+def is_admin_card():
+    return bool(ADMIN_CARD_NUMBER and session.get("card_number") == ADMIN_CARD_NUMBER)
+
+
+def admin_session_active():
+    try:
+        authorized_until = float(session.get("admin_authorized_until", 0))
+    except (TypeError, ValueError):
+        return False
+    return is_admin_card() and authorized_until > time.time()
+
+
+def admin_card_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not session.get("card_number"):
+            return redirect(url_for("login", next=request.path))
+        if not is_admin_card():
+            return render_template("forbidden.html", message="This card is not allowed to open Management."), 403
+        return view(*args, **kwargs)
+    return wrapped
+
+
+@app.context_processor
+def management_access_context():
+    return {"is_admin_card": is_admin_card()}
 
 
 def card_key_required(view):
@@ -201,8 +238,12 @@ def create_linked_card():
 
 @app.get("/management")
 @app.get("/managment")
+@user_login_required
+@admin_card_required
 def management():
-    return render_template("management.html")
+    session.setdefault("csrf_token", secrets.token_urlsafe(24))
+    return render_template("management.html", csrf_token=session["csrf_token"],
+                           admin_authorized=admin_session_active())
 
 
 @app.get("/payments")
@@ -226,7 +267,7 @@ def api_documentation():
 def api_documentation_json():
     return jsonify({
         "name": "Bank System API", "version": "1.0",
-        "authentication": {"user_operations": "Login with card number and password; retain the session cookie", "card_api_operations": "X-API-Key: bank_card_...", "management_operations": "X-Admin-Key: BANK_ADMIN_KEY"},
+        "authentication": {"user_operations": "Login with card number and password; retain the session cookie", "card_api_operations": "X-API-Key: bank_card_...", "management_operations": "X-Admin-Key: BANK_ADMIN_KEY, or a seven-day unlocked session for the configured admin card"},
         "security_note": "Raw card API keys are returned once and stored only as salted hashes.",
         "endpoints": [
             {"method": "GET", "path": "/api/health", "auth": "none"},
@@ -241,6 +282,7 @@ def api_documentation_json():
             {"method": "POST", "path": "/api/payments", "auth": "user session and CSRF token", "description": "Identifies the recipient using an 8-digit card number"},
             {"method": "GET", "path": "/api/exchange/quote", "auth": "user session"},
             {"method": "POST", "path": "/api/exchange", "auth": "user session and CSRF token"},
+            {"method": "POST", "path": "/api/admin/unlock", "auth": "configured admin card session, CSRF token, and admin key", "description": "Unlocks browser-based management for seven days"},
             {"method": "GET", "path": "/admin/cards", "auth": "admin key"},
             {"method": "POST", "path": "/admin/cards", "auth": "admin key"},
             {"method": "POST", "path": "/admin/cards/<card_number>/replace-key", "auth": "admin key"},
@@ -361,6 +403,23 @@ def exchange_money():
     except ExchangeError as error:
         return jsonify({"error": str(error)}), 503
     return jsonify({"status": "success", **exchange_balance(session["card_number"], quote)}), 201
+
+
+@app.post("/api/admin/unlock")
+@user_login_required
+def api_admin_unlock():
+    verify_csrf()
+    if not is_admin_card():
+        return jsonify({"error": "This card is not allowed to unlock Management"}), 403
+    if not ADMIN_KEY:
+        return jsonify({"error": "BANK_ADMIN_KEY is not configured"}), 503
+    data = json_body()
+    supplied_key = str(data.get("admin_key", ""))
+    if len(supplied_key) > 200 or not hmac.compare_digest(supplied_key, ADMIN_KEY):
+        return jsonify({"error": "Incorrect admin key"}), 401
+    session["admin_authorized_until"] = int(time.time()) + ADMIN_AUTH_SECONDS
+    session.permanent = True
+    return jsonify({"status": "success", "expires_in_seconds": ADMIN_AUTH_SECONDS})
 
 
 @app.get("/admin/cards")

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>API · Bank System</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
 <body><header class="nav"><a class="brand" href="/"><span class="icon">◆</span> Bank System</a><nav><a href="/login"><span class="icon">◉</span> User login</a><a href="/register"><span class="icon">＋</span> Create card</a><a href="/management"><span class="icon">▦</span> Management</a><a class="active" href="/api"><span class="icon">⌘</span> API</a></nav></header>
-<main class="page docs"><span class="eyebrow">API DOCUMENTATION</span><h1>Bank System API</h1><p>User payments require a login session created with a card number and password. Management endpoints use <code>X-Admin-Key</code>; lower-level card endpoints use <code>X-API-Key</code>.</p><div class="warning"><strong>Demo only.</strong> This project is not a real bank or payment processor and should not hold real financial data.</div>
+<main class="page docs"><span class="eyebrow">API DOCUMENTATION</span><h1>Bank System API</h1><p>User payments require a login session created with a card number and password. Management endpoints accept <code>X-Admin-Key</code>; the configured admin card can instead unlock a browser session for seven days. Lower-level card endpoints use <code>X-API-Key</code>.</p><div class="warning"><strong>Demo only.</strong> This project is not a real bank or payment processor and should not hold real financial data.</div>
 <section class="endpoint"><span class="method post">POST</span><code>/api/auth/login</code><p>Log in with the full card number and password. Retain the returned session cookie and CSRF token.</p><pre>curl -c session.txt -X POST http://127.0.0.1:2501/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"card_number":"40000000","password":"your-password"}'</pre></section>
@@ -24,6 +24,10 @@
   -d '{"to_card_number":"44808087","currency":"SGD","amount":12.50,"description":"Lunch"}'</pre></section>
 <section class="endpoint"><span class="method get">GET</span><code>/api/exchange/quote</code><p>Preview a reference-rate exchange between the logged-in user's own currency balances.</p><pre>curl -b session.txt "http://127.0.0.1:2501/api/exchange/quote?from=SGD&amp;to=USD&amp;amount=25"</pre></section>
 <section class="endpoint"><span class="method post">POST</span><code>/api/exchange</code><p>Re-fetch the current quote and exchange money inside the logged-in account. Requires the session CSRF token.</p></section>
+<section class="endpoint"><span class="method post">POST</span><code>/api/admin/unlock</code><p>For the configured admin card only. Submit the unchanged admin key with the logged-in session and CSRF token to unlock browser Management access for seven days. The key is verified but is not stored in the browser.</p><pre>curl -b session.txt -X POST http://127.0.0.1:2501/api/admin/unlock \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-Token: TOKEN_FROM_LOGIN" \
+  -d '{"admin_key":"YOUR_ADMIN_KEY"}'</pre></section>
 <section class="endpoint"><span class="method get">GET</span><code>/api/cards/&lt;card_number&gt;</code><p>Card-key access for authenticated integrations.</p><pre>curl -H "X-API-Key: bank_card_..." http://127.0.0.1:2501/api/cards/44808087</pre></section>
 <section class="endpoint"><span class="method post">POST</span><code>/admin/cards</code><p>Create a card. Its response contains the card API key exactly once. To link a same-name card to an existing person, include that person's existing <code>linked_card_number</code>.</p><pre>{"holder":"Alex Tan","label":"Travel","currency":"USD","initial_balance":0,"linked_card_number":"44808087"}</pre></section>
 <section class="endpoint"><span class="method post">PUT</span><code>/admin/cards/&lt;card_number&gt;/login</code><p>Set or reset the password used with that card number.</p></section>

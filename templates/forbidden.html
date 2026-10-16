@@ -1,0 +1,4 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Access denied · Bank System</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body><header class="nav"><a class="brand" href="/account"><span class="icon">◆</span> Bank System</a><nav><a href="/account">My account</a><form action="/logout" method="post"><button class="nav-button">Log out</button></form></nav></header>
+<main class="page"><section class="panel"><span class="eyebrow">ACCESS DENIED</span><h1>Management is restricted</h1><p>{{ message }}</p><a class="button primary" href="/account">Return to my account</a></section></main></body></html>

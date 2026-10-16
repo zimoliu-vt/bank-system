@@ -1,12 +1,15 @@
 const adminInput = document.querySelector("#admin-key");
+const adminPanel = document.querySelector("#admin-key-panel");
 const cardsNode = document.querySelector("#cards");
 const notice = document.querySelector("#notice");
 const keyDialog = document.querySelector("#key-dialog");
 const loginDialog = document.querySelector("#login-dialog");
 const newKey = document.querySelector("#new-key");
 let knownCards = [];
+let adminAuthorized = document.querySelector('meta[name="admin-authorized"]').content === "true";
+const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 
-const headers = () => ({"Content-Type": "application/json", "X-Admin-Key": adminInput.value});
+const headers = () => ({"Content-Type": "application/json", "X-CSRF-Token": csrfToken});
 
 function message(text, error = false) {
   notice.textContent = text;
@@ -56,7 +59,16 @@ async function loadCards() {
 
 function showKey(key) { newKey.textContent = key; keyDialog.showModal(); }
 
-document.querySelector("#connect").addEventListener("click", loadCards);
+document.querySelector("#connect").addEventListener("click", async () => {
+  try {
+    await api("/api/admin/unlock", {method: "POST", body: JSON.stringify({admin_key: adminInput.value})});
+    adminInput.value = "";
+    adminAuthorized = true;
+    adminPanel.classList.add("hidden");
+    await loadCards();
+    message("Management unlocked for seven days on this browser.");
+  } catch (error) { message(error.message, true); }
+});
 document.querySelector("#refresh").addEventListener("click", loadCards);
 document.querySelector("#create-form").addEventListener("submit", async event => {
   event.preventDefault();
@@ -109,3 +121,5 @@ document.querySelector("#login-form").addEventListener("submit", async event => 
 document.querySelector("#copy-key").addEventListener("click", () => navigator.clipboard.writeText(newKey.textContent));
 document.querySelector("#close-dialog").addEventListener("click", () => { newKey.textContent = ""; keyDialog.close(); });
 document.querySelector("#close-login-dialog").addEventListener("click", () => loginDialog.close());
+
+if (adminAuthorized) loadCards();
