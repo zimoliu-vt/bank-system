@@ -29,6 +29,7 @@ The development server listens on all local interfaces. Keep port 2501 blocked f
 - Every card has a different generated `bank_card_...` API key.
 - Users log in with their generated 8-digit demo card number and a hashed password configured by an administrator.
 - Users may self-register a new unlinked card; its opening balance is always forced to zero by the server.
+- Logged-in users may create additional zero-balance cards automatically linked under their authenticated holder name.
 - The browser locale suggests a regional display currency for account totals and new cards; no GPS permission is requested, and the selection remains editable.
 - When a new card has the same holder name, management asks whether it belongs to the same person. Linked cards appear in a chooser after login.
 - Browser and API payments require an authenticated session plus a CSRF token.

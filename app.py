@@ -181,6 +181,28 @@ def select_account_card():
     return redirect(url_for("account"))
 
 
+@app.route("/account/cards/new", methods=["GET", "POST"])
+@user_login_required
+def create_linked_card():
+    session.setdefault("csrf_token", secrets.token_urlsafe(24))
+    current = get_card(session["card_id"])
+    if request.method == "GET":
+        return render_template("new-linked-card.html", card=current, csrf_token=session["csrf_token"], error=None, values={})
+    expected = session.get("csrf_token", "")
+    supplied = request.form.get("csrf_token", "")
+    if not expected or not supplied or not hmac.compare_digest(expected, supplied):
+        raise BankError("Invalid session token. Refresh the page and try again.", 403)
+    try:
+        card, _unused_api_key = create_card(current["holder"], request.form.get("label"), 0,
+                                             request.form.get("currency", current["currency"]),
+                                             linked_card_id=current["id"], created_by="user")
+    except BankError as error:
+        return render_template("new-linked-card.html", card=current, csrf_token=session["csrf_token"],
+                               error=str(error), values=request.form), error.status_code
+    session["card_id"] = card["id"]
+    return redirect(url_for("account"))
+
+
 @app.get("/management")
 @app.get("/managment")
 def management():
@@ -219,6 +241,7 @@ def api_documentation_json():
             {"method": "GET", "path": "/api/account", "auth": "user session", "description": "Returns the selected card, linked cards, and an estimated total value in the main currency"},
             {"method": "GET", "path": "/api/account/valuation?currency=SGD", "auth": "user session", "description": "Returns the account total converted into a supported display currency"},
             {"method": "POST", "path": "/api/account/select-card", "auth": "user session and CSRF token"},
+            {"method": "POST", "path": "/api/account/cards", "auth": "user session and CSRF token", "description": "Creates a linked card under the authenticated holder name with a server-enforced zero balance"},
             {"method": "POST", "path": "/api/payments", "auth": "user session and CSRF token", "description": "Accepts recipient as either a Card ID or 8-digit card number; legacy to_card_id is also supported"},
             {"method": "GET", "path": "/api/exchange/quote", "auth": "user session"},
             {"method": "POST", "path": "/api/exchange", "auth": "user session and CSRF token"},
@@ -300,6 +323,19 @@ def api_select_account_card():
     selected = select_linked_card(session["card_id"], data["card_id"])
     session["card_id"] = selected["id"]
     return jsonify({"status": "success", "card": selected})
+
+
+@app.post("/api/account/cards")
+@user_login_required
+def api_create_linked_card():
+    verify_csrf()
+    data = json_body()
+    current = get_card(session["card_id"])
+    card, _unused_api_key = create_card(current["holder"], data.get("label"), 0,
+                                        data.get("currency", current["currency"]),
+                                        linked_card_id=current["id"], created_by="user")
+    session["card_id"] = card["id"]
+    return jsonify({"status": "success", "card": card, "message": "Linked card created with a zero balance"}), 201
 
 
 @app.post("/api/payments")
