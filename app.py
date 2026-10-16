@@ -1,6 +1,7 @@
 import os
 import hmac
 import secrets
+from decimal import InvalidOperation
 from functools import wraps
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from flask import Flask, jsonify, redirect, render_template, request, session, u
 from bank import (BankError, authenticate_card, create_card, delete_card, exchange_balance, get_card, get_linked_cards, get_logs, list_cards,
                   make_payment, make_transaction, replace_card_key, set_card_status,
                   select_linked_card, set_card_login, verify_card_key)
-from exchange import ExchangeError, get_quote
+from exchange import ExchangeError, get_quote, get_total_value
 
 
 def load_env():
@@ -78,6 +79,13 @@ def verify_csrf():
         raise BankError("Invalid session token. Refresh the page and try again.", 403)
 
 
+def card_valuation(card):
+    try:
+        return get_total_value(card["balances"], card["currency"])
+    except (ExchangeError, InvalidOperation, ValueError):
+        return {"currency": card["currency"], "amount": card["balance"], "rate_date": None, "complete": False}
+
+
 @app.errorhandler(BankError)
 def bank_error(error):
     return jsonify({"error": str(error)}), error.status_code
@@ -118,6 +126,7 @@ def logout():
 def account():
     session.setdefault("csrf_token", secrets.token_urlsafe(24))
     card = get_card(session["card_id"], include_transactions=True)
+    valuation = card_valuation(card)
     transaction_days = sorted({item.get("created_at", "")[:10] for item in card["transactions"] if item.get("created_at")}, reverse=True)
     requested_day = request.args.get("day", "")
     selected_day = requested_day if requested_day in transaction_days else (transaction_days[0] if transaction_days else "")
@@ -128,7 +137,7 @@ def account():
     return render_template("account.html", card=card, linked_cards=get_linked_cards(session["card_id"]),
                            csrf_token=session["csrf_token"], transaction_days=transaction_days,
                            selected_day=selected_day, selected_transactions=selected_transactions,
-                           newer_day=newer_day, older_day=older_day)
+                           newer_day=newer_day, older_day=older_day, valuation=valuation)
 
 
 @app.post("/account/select-card")
@@ -181,7 +190,7 @@ def api_documentation_json():
             {"method": "GET", "path": "/api/cards/<id>", "auth": "card API key"},
             {"method": "POST", "path": "/api/cards/<id>/transactions", "auth": "card API key"},
             {"method": "POST", "path": "/api/auth/login", "auth": "card number and password"},
-            {"method": "GET", "path": "/api/account", "auth": "user session", "description": "Returns the selected card and all linked cards"},
+            {"method": "GET", "path": "/api/account", "auth": "user session", "description": "Returns the selected card, linked cards, and an estimated total value in the main currency"},
             {"method": "POST", "path": "/api/account/select-card", "auth": "user session and CSRF token"},
             {"method": "POST", "path": "/api/payments", "auth": "user session and CSRF token", "description": "Accepts recipient as either a Card ID or 8-digit card number; legacy to_card_id is also supported"},
             {"method": "GET", "path": "/api/exchange/quote", "auth": "user session"},
@@ -231,7 +240,8 @@ def api_login():
 @app.get("/api/account")
 @user_login_required
 def api_account():
-    return jsonify({"card": get_card(session["card_id"], include_transactions=True), "linked_cards": get_linked_cards(session["card_id"])})
+    card = get_card(session["card_id"], include_transactions=True)
+    return jsonify({"card": card, "valuation": card_valuation(card), "linked_cards": get_linked_cards(session["card_id"])})
 
 
 @app.post("/api/account/select-card")
