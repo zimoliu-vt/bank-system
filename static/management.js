@@ -30,12 +30,17 @@ async function loadCards() {
   try {
     const {cards} = await api("/admin/cards");
     knownCards = cards;
-    cardsNode.innerHTML = cards.length ? cards.map(card => `
+    cardsNode.innerHTML = cards.length ? cards.map(card => {
+      const balances = Object.entries(card.balances).filter(([, amount]) => Number(amount) !== 0);
+      const balanceHtml = balances.length
+        ? balances.map(([currency, amount]) => `<span>${escapeHtml(currency)} ${escapeHtml(amount)}</span>`).join("")
+        : '<span class="empty">No available balance</span>';
+      return `
       <article class="bank-card ${card.status}">
         <header><h3>${escapeHtml(card.label)}</h3><span>${escapeHtml(card.status)}</span></header>
         <div class="card-id">Card ID: ${card.id}</div>
         <div class="card-number">${escapeHtml(card.card_number)}</div>
-        <div class="balance">${escapeHtml(card.currency)} ${escapeHtml(card.balance)}</div>
+        <div class="balance">${balanceHtml}</div>
         <footer><span>${escapeHtml(card.holder)} · ${card.login_configured ? "Login ready" : "No login"}</span>
           <span class="card-actions">
             <button data-action="login" data-id="${card.id}">${card.login_configured ? "Reset login" : "Set login"}</button>
@@ -44,7 +49,8 @@ async function loadCards() {
             <button class="danger-button" data-action="delete" data-id="${card.id}" data-label="${escapeHtml(card.label)}">Delete</button>
           </span>
         </footer>
-      </article>`).join("") : '<p class="muted">No cards yet.</p>';
+      </article>`;
+    }).join("") : '<p class="muted">No cards yet.</p>';
     message("Connected securely.");
   } catch (error) { message(error.message, true); }
 }

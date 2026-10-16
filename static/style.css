@@ -40,7 +40,8 @@ input,select { display:block; width:100%; margin-top:7px; border:1px solid #cbd3
 .bank-card h3 { margin:0; }
 .bank-card .card-id { display:inline-block; margin-top:12px; padding:5px 9px; border:1px solid #ffffff45; border-radius:999px; background:#ffffff12; font-size:13px; font-weight:750; }
 .bank-card .card-number { margin-top:15px; font-family:"SFMono-Regular",Consolas,monospace; font-size:18px; letter-spacing:.08em; }
-.bank-card .balance { font-size:28px; font-weight:800; margin:26px 0 4px; }
+.bank-card .balance { display:flex; flex-wrap:wrap; gap:6px 22px; font-size:28px; font-weight:800; margin:26px 0 4px; }
+.bank-card .balance .empty { color:#cfe3dc; font-size:16px; font-weight:600; }
 .bank-card footer { align-items:end; }
 .card-actions { display:flex; gap:8px; }
 .bank-card button { padding:7px 10px; border:1px solid #ffffff55; border-radius:8px; background:#ffffff18; color:#fff; cursor:pointer; }
