@@ -91,6 +91,7 @@ dialog code { display:block; padding:16px; background:#edf0ed; border-radius:10p
 .balance-chip.selected { color:var(--green); background:#eef6f1; border-color:var(--green); }
 .rate-note { font-size:13px; }
 .transactions { margin-top:24px; }
+.transaction-day { margin:22px 0 0; padding:10px 0 8px; color:var(--muted); font-size:13px; letter-spacing:.08em; text-transform:uppercase; }
 .transaction-list article { display:flex; justify-content:space-between; align-items:center; gap:20px; padding:16px 0; border-top:1px solid var(--line); }
 .transaction-list article span { display:block; color:var(--muted); font-size:13px; margin-top:5px; }
 .transaction-list .incoming { color:var(--green); }
