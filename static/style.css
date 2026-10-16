@@ -7,6 +7,7 @@
 * { box-sizing:border-box; }
 html { color-scheme:light; scroll-behavior:smooth; }
 body { min-height:100vh; margin:0; color:var(--ink); font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; background:radial-gradient(circle at 10% -10%,rgba(223,169,56,.12),transparent 30rem),radial-gradient(circle at 100% 20%,rgba(23,97,72,.08),transparent 34rem),var(--paper); -webkit-font-smoothing:antialiased; }
+body::after { content:"Bonk System is a fictional software demo — not a bank, financial institution, payment processor, wallet, or money-changing service. All balances and transfers are simulated and have no real monetary value. Do not enter real financial or sensitive personal information."; display:block; margin-top:36px; padding:20px max(18px,calc((100vw - 1120px)/2)); border-top:1px solid var(--line); background:#13221d; color:#d5e1dc; font-size:12px; font-weight:650; line-height:1.6; text-align:center; }
 a,button,input,select { transition:border-color .18s,background-color .18s,color .18s,box-shadow .18s,transform .18s; }
 button,input,select { font:inherit; }
 .nav { position:sticky; top:0; z-index:20; min-height:76px; padding:0 max(24px,calc((100vw - 1160px)/2)); display:flex; align-items:center; justify-content:space-between; gap:28px; background:rgba(255,254,251,.88); border-bottom:1px solid rgba(203,213,205,.8); box-shadow:0 8px 30px rgba(17,56,42,.04); backdrop-filter:blur(18px); }

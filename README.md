@@ -1,48 +1,104 @@
-# Bank System
+# Bonk System
 
-A local Flask demonstration app with card-number login, linked cards for the same person, private account pages, multi-currency balances, reference-rate currency exchange, transaction history, protected card-to-card payments, audit logs, and a separate API key for every card.
+Bonk System is an educational Flask project that demonstrates account login, fictional multi-currency balances, linked cards, simulated transfers, reference-rate exchange calculations, transaction history, administration tools, and authenticated API access.
 
-> This is an educational demo, not a real bank or payment processor. Do not use real card details, credentials, or financial data.
+> [!IMPORTANT]
+> **Bonk System is a software demonstration—not a bank, financial institution, payment processor, wallet, or money-changing service.** All cards, balances, transfers, and conversions are fictional, have no monetary value, and cannot be deposited, withdrawn, redeemed, or exchanged for real money. Never enter real financial information, card details, government identifiers, or passwords used elsewhere.
 
-## Setup
+## Features
+
+- User registration and login with generated 8-digit demo card numbers
+- Zero-balance self-service and linked-card creation
+- Separate balances for SGD, USD, EUR, GBP, and CNY
+- Simulated card-to-card transfers without automatic currency conversion
+- Optional internal exchange using delayed external reference rates
+- Transaction history grouped by day
+- Per-card API keys stored as salted hashes
+- Restricted Management page with admin-card and admin-key checks
+- JSON API with session, CSRF, card-key, and admin-key authentication
+- Atomic JSON storage and audit logging
+
+## Run locally
+
+Requires Python 3.11 or newer.
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` and replace the sample `BANK_ADMIN_KEY` with a long random secret. `BANK_ADMIN_CARD_NUMBER` identifies the one card allowed to open the browser management page (the default `44808087` is the card formerly known as ID 5). Generate an admin key with:
+Edit `.env` and replace both sample secrets. Generate secure values with:
 
 ```bash
-python -c "import secrets; print(secrets.token_urlsafe(32))"
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-Run `python app.py`. On this Mac, open <http://127.0.0.1:2501/>. Payments are at <http://127.0.0.1:2501/payments>, management is at <http://127.0.0.1:2501/management>, and API docs are at <http://127.0.0.1:2501/api>. Other devices on the same private network can use `http://YOUR_MAC_PRIVATE_IP:2501/`.
+Then start the development server:
 
-The development server listens on all local interfaces. Keep port 2501 blocked from the public internet and do not configure router port forwarding for this demo.
+```bash
+python3 app.py
+```
 
-## Key security
+Open <http://127.0.0.1:2501/>. API documentation is available at <http://127.0.0.1:2501/api>.
 
-- Only the card configured by `BANK_ADMIN_CARD_NUMBER` can open the browser management page. It must still provide `BANK_ADMIN_KEY`; a successful check unlocks that browser session for seven days.
-- API clients can continue to authorize individual management requests with `BANK_ADMIN_KEY` in the `X-Admin-Key` header.
-- Every card has a different generated `bank_card_...` API key.
-- Users log in with their generated 8-digit demo card number and a hashed password configured by an administrator.
-- Users may self-register a new unlinked card; its opening balance is always forced to zero by the server.
-- Logged-in users may create additional zero-balance cards automatically linked under their authenticated holder name.
-- The browser locale suggests a regional display currency for account totals and new cards; no GPS permission is requested, and the selection remains editable.
-- When a new card has the same holder name, management asks whether it belongs to the same person. Linked cards appear in a chooser after login.
-- Browser and API payments require an authenticated session plus a CSRF token.
-- Cards are identified by their 8-digit card number across the website and API; separate user-facing numeric IDs are not used.
-- Payments can be sent from any currency balance the sender owns. Cross-currency payments are never exchanged: the recipient receives the same numeric amount in the selected currency as a separate balance.
-- Users can explicitly exchange money between their own balances using the latest available Frankfurter reference rate.
-- Supported currencies: SGD, USD, EUR, GBP, and CNY.
-- Passwords use Werkzeug's `scrypt` hashing and are never stored in plain text.
-- Raw card keys appear only when created or replaced.
-- Only a salted `scrypt` hash is stored in `cards.json`.
-- Key checks use constant-time comparisons.
-- Replacing a key immediately invalidates the previous key.
-- Deleting a card requires the admin key and a zero balance; its deletion remains in the audit log.
+## Configuration
 
-Local `.env`, card data, logs, databases, and backups are excluded from Git.
+| Variable | Purpose |
+|---|---|
+| `BANK_SESSION_SECRET` | Signs browser sessions; use a unique random value |
+| `BANK_ADMIN_KEY` | Authorizes management operations |
+| `BANK_ADMIN_CARD_NUMBER` | Selects the only demo card allowed to open browser Management |
+
+The default example admin card number is `44808087`, formerly internal card ID 5. Do not use the example configuration for a public deployment.
+
+## Authentication model
+
+- Users authenticate with a demo card number and password.
+- Browser changes require a CSRF token.
+- Card integrations use a separate `X-API-Key` for each card.
+- API management calls may use `X-Admin-Key`.
+- Browser Management requires the configured admin card plus the admin key; successful authorization lasts seven days or until logout.
+- Passwords and API keys are stored as salted `scrypt` hashes rather than plain text.
+
+## Data storage
+
+This project stores local demonstration data in `cards.json` and `logs.json`. Writes use a temporary file followed by replacement to reduce corruption risk. These files, `.env`, databases, logs, backups, credentials, and virtual environments are excluded from Git.
+
+Do not commit or deploy existing local data. Start any public demo with empty fictional records and reset them regularly.
+
+## Public deployment warning
+
+Flask's built-in server is for development only. Do not expose `python3 app.py` directly to the public internet. A public demonstration requires, at minimum:
+
+- A production WSGI server and reverse proxy
+- Valid HTTPS
+- Secure production secret management
+- Rate limiting and login-abuse protection
+- A production database with backups and restricted access
+- Security review, dependency maintenance, monitoring, and an incident-response plan
+- Removal or strong isolation of Management
+- A privacy notice if any personal data is collected
+- Prominent disclosure that the application is fictional and provides no financial service
+
+This repository is not designed or approved to process real money, deposits, withdrawals, payment instruments, or sensitive financial data.
+
+## Project layout
+
+```text
+app.py              Flask pages, APIs, sessions, and access control
+bank.py             Card, balance, transfer, transaction, and JSON-storage logic
+exchange.py         Reference-rate retrieval, caching, totals, and quotes
+templates/          Server-rendered HTML pages
+static/             CSS and browser JavaScript
+.env.example        Non-secret configuration template
+```
+
+## API documentation
+
+Run the application and visit `/api` for examples or `/api.json` for machine-readable endpoint information.
+
+## Licence
+
+See [LICENSE](LICENSE).
