@@ -69,7 +69,8 @@ def admin_required(view):
 
 
 def is_admin_card():
-    return bool(ADMIN_CARD_NUMBER and session.get("card_number") == ADMIN_CARD_NUMBER)
+    session_card_number = "".join(character for character in str(session.get("card_number", "")) if character.isdigit())
+    return bool(ADMIN_CARD_NUMBER and session_card_number == ADMIN_CARD_NUMBER)
 
 
 def admin_session_active():
