@@ -1,9 +1,9 @@
-# Bonk System
+# Bank System
 
-Bonk System is an educational Flask project that demonstrates account login, fictional multi-currency balances, linked cards, simulated transfers, reference-rate exchange calculations, transaction history, administration tools, and authenticated API access.
+Bank System is an educational Flask project that demonstrates account login, fictional multi-currency balances, linked cards, simulated transfers, reference-rate exchange calculations, transaction history, administration tools, and authenticated API access.
 
 > [!IMPORTANT]
-> **Bonk System is a software demonstration—not a bank, financial institution, payment processor, wallet, or money-changing service.** All cards, balances, transfers, and conversions are fictional, have no monetary value, and cannot be deposited, withdrawn, redeemed, or exchanged for real money. Never enter real financial information, card details, government identifiers, or passwords used elsewhere.
+> **Bank System is a software demonstration—not a real bank, financial institution, payment processor, wallet, or money-changing service.** All cards, balances, transfers, and conversions are fictional, have no monetary value, and cannot be deposited, withdrawn, redeemed, or exchanged for real money. Never enter real financial information, card details, government identifiers, or passwords used elsewhere.
 
 ## Features
 
