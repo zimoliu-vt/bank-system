@@ -13,18 +13,18 @@
 <section class="endpoint"><span class="method post">POST</span><code>/api/account/select-card</code><p>Switch the logged-in session to another card linked to the same person. Requires the session CSRF token.</p><pre>curl -b session.txt -X POST http://127.0.0.1:2501/api/account/select-card \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: TOKEN_FROM_LOGIN" \
-  -d '{"card_id":2}'</pre></section>
+  -d '{"card_number":"44808087"}'</pre></section>
 <section class="endpoint"><span class="method post">POST</span><code>/api/account/cards</code><p>Create a zero-balance card linked to the authenticated person's existing cards. The holder name comes from the session; supplied holder, balance, and linked-card fields are ignored.</p><pre>curl -b session.txt -X POST http://127.0.0.1:2501/api/account/cards \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: TOKEN_FROM_LOGIN" \
   -d '{"label":"Travel card","currency":"USD"}'</pre></section>
-<section class="endpoint"><span class="method post">POST</span><code>/api/payments</code><p>Send money from the logged-in card using either <code>recipient</code> with a Card ID or full 8-digit card number. The older <code>to_card_id</code> field remains supported. Use the <code>csrf_token</code> returned by login. The recipient keeps the original currency as a separate balance; no exchange occurs.</p><pre>curl -b session.txt -X POST http://127.0.0.1:2501/api/payments \
+<section class="endpoint"><span class="method post">POST</span><code>/api/payments</code><p>Send money from the logged-in card to a full 8-digit <code>to_card_number</code>. Use the <code>csrf_token</code> returned by login. The recipient keeps the original currency as a separate balance; no exchange occurs.</p><pre>curl -b session.txt -X POST http://127.0.0.1:2501/api/payments \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: TOKEN_FROM_LOGIN" \
-  -d '{"recipient":"44808087","currency":"SGD","amount":12.50,"description":"Lunch"}'</pre></section>
+  -d '{"to_card_number":"44808087","currency":"SGD","amount":12.50,"description":"Lunch"}'</pre></section>
 <section class="endpoint"><span class="method get">GET</span><code>/api/exchange/quote</code><p>Preview a reference-rate exchange between the logged-in user's own currency balances.</p><pre>curl -b session.txt "http://127.0.0.1:2501/api/exchange/quote?from=SGD&amp;to=USD&amp;amount=25"</pre></section>
 <section class="endpoint"><span class="method post">POST</span><code>/api/exchange</code><p>Re-fetch the current quote and exchange money inside the logged-in account. Requires the session CSRF token.</p></section>
-<section class="endpoint"><span class="method get">GET</span><code>/api/cards/&lt;id&gt;</code><p>Card-key access for authenticated integrations.</p><pre>curl -H "X-API-Key: bank_card_..." http://127.0.0.1:2501/api/cards/1</pre></section>
-<section class="endpoint"><span class="method post">POST</span><code>/admin/cards</code><p>Create a card. Its response contains the card API key exactly once. To link a same-name card to an existing person, include that person's existing integer <code>linked_card_id</code>.</p><pre>{"holder":"Alex Tan","label":"Travel","currency":"USD","initial_balance":0,"linked_card_id":1}</pre></section>
-<section class="endpoint"><span class="method post">PUT</span><code>/admin/cards/&lt;id&gt;/login</code><p>Set or reset the password used with that card's displayed number.</p></section>
-<section class="endpoint"><span class="method delete">DELETE</span><code>/admin/cards/&lt;id&gt;</code><p>Permanently delete a zero-balance card.</p></section><p>Machine-readable documentation: <a href="/api.json">/api.json</a></p></main></body></html>
+<section class="endpoint"><span class="method get">GET</span><code>/api/cards/&lt;card_number&gt;</code><p>Card-key access for authenticated integrations.</p><pre>curl -H "X-API-Key: bank_card_..." http://127.0.0.1:2501/api/cards/44808087</pre></section>
+<section class="endpoint"><span class="method post">POST</span><code>/admin/cards</code><p>Create a card. Its response contains the card API key exactly once. To link a same-name card to an existing person, include that person's existing <code>linked_card_number</code>.</p><pre>{"holder":"Alex Tan","label":"Travel","currency":"USD","initial_balance":0,"linked_card_number":"44808087"}</pre></section>
+<section class="endpoint"><span class="method post">PUT</span><code>/admin/cards/&lt;card_number&gt;/login</code><p>Set or reset the password used with that card number.</p></section>
+<section class="endpoint"><span class="method delete">DELETE</span><code>/admin/cards/&lt;card_number&gt;</code><p>Permanently delete a zero-balance card.</p></section><p>Machine-readable documentation: <a href="/api.json">/api.json</a></p></main></body></html>

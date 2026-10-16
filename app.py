@@ -53,18 +53,18 @@ def admin_required(view):
 
 def card_key_required(view):
     @wraps(view)
-    def wrapped(card_id, *args, **kwargs):
+    def wrapped(card_number, *args, **kwargs):
         key = request.headers.get("X-API-Key", "")
-        if not key or not verify_card_key(card_id, key):
+        if not key or not verify_card_key(card_number, key):
             return jsonify({"error": "Valid X-API-Key header required"}), 401
-        return view(card_id, *args, **kwargs)
+        return view(card_number, *args, **kwargs)
     return wrapped
 
 
 def user_login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
-        if not session.get("card_id"):
+        if not session.get("card_number"):
             if request.path.startswith("/api/"):
                 return jsonify({"error": "Login required"}), 401
             return redirect(url_for("login", next=request.path))
@@ -102,7 +102,7 @@ def home():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "GET":
-        if session.get("card_id"):
+        if session.get("card_number"):
             return redirect(url_for("account"))
         return render_template("login.html", error=None)
     try:
@@ -112,7 +112,7 @@ def login():
     if card is None:
         return render_template("login.html", error="Incorrect card number or password"), 401
     session.clear()
-    session["card_id"] = card["id"]
+    session["card_number"] = card["card_number"]
     session["csrf_token"] = secrets.token_urlsafe(24)
     session.permanent = False
     return redirect(url_for("account"))
@@ -121,7 +121,7 @@ def login():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "GET":
-        if session.get("card_id"):
+        if session.get("card_number"):
             return redirect(url_for("account"))
         return render_template("register.html", error=None, values={})
     values = request.form
@@ -134,7 +134,7 @@ def register():
     except BankError as error:
         return render_template("register.html", error=str(error), values=values), error.status_code
     session.clear()
-    session["card_id"] = card["id"]
+    session["card_number"] = card["card_number"]
     session["csrf_token"] = secrets.token_urlsafe(24)
     session.permanent = False
     return redirect(url_for("account"))
@@ -150,7 +150,7 @@ def logout():
 @user_login_required
 def account():
     session.setdefault("csrf_token", secrets.token_urlsafe(24))
-    card = get_card(session["card_id"], include_transactions=True)
+    card = get_card(session["card_number"], include_transactions=True)
     valuation = card_valuation(card)
     transaction_days = sorted({item.get("created_at", "")[:10] for item in card["transactions"] if item.get("created_at")}, reverse=True)
     requested_day = request.args.get("day", "")
@@ -159,7 +159,7 @@ def account():
     day_index = transaction_days.index(selected_day) if selected_day else -1
     newer_day = transaction_days[day_index - 1] if day_index > 0 else None
     older_day = transaction_days[day_index + 1] if 0 <= day_index < len(transaction_days) - 1 else None
-    return render_template("account.html", card=card, linked_cards=get_linked_cards(session["card_id"]),
+    return render_template("account.html", card=card, linked_cards=get_linked_cards(session["card_number"]),
                            csrf_token=session["csrf_token"], transaction_days=transaction_days,
                            selected_day=selected_day, selected_transactions=selected_transactions,
                            newer_day=newer_day, older_day=older_day, valuation=valuation)
@@ -172,12 +172,8 @@ def select_account_card():
     supplied = request.form.get("csrf_token", "")
     if not expected or not supplied or not hmac.compare_digest(expected, supplied):
         raise BankError("Invalid session token. Refresh the page and try again.", 403)
-    try:
-        selected_id = int(request.form.get("card_id", ""))
-    except (TypeError, ValueError) as error:
-        raise BankError("A valid card ID is required") from error
-    selected = select_linked_card(session["card_id"], selected_id)
-    session["card_id"] = selected["id"]
+    selected = select_linked_card(session["card_number"], request.form.get("card_number"))
+    session["card_number"] = selected["card_number"]
     return redirect(url_for("account"))
 
 
@@ -185,7 +181,7 @@ def select_account_card():
 @user_login_required
 def create_linked_card():
     session.setdefault("csrf_token", secrets.token_urlsafe(24))
-    current = get_card(session["card_id"])
+    current = get_card(session["card_number"])
     if request.method == "GET":
         return render_template("new-linked-card.html", card=current, csrf_token=session["csrf_token"], error=None, values={})
     expected = session.get("csrf_token", "")
@@ -195,11 +191,11 @@ def create_linked_card():
     try:
         card, _unused_api_key = create_card(current["holder"], request.form.get("label"), 0,
                                              request.form.get("currency", current["currency"]),
-                                             linked_card_id=current["id"], created_by="user")
+                                             linked_card_number=current["card_number"], created_by="user")
     except BankError as error:
         return render_template("new-linked-card.html", card=current, csrf_token=session["csrf_token"],
                                error=str(error), values=request.form), error.status_code
-    session["card_id"] = card["id"]
+    session["card_number"] = card["card_number"]
     return redirect(url_for("account"))
 
 
@@ -212,13 +208,13 @@ def management():
 @app.get("/payments")
 @user_login_required
 def payments():
-    return render_template("payments.html", card=get_card(session["card_id"]), csrf_token=session["csrf_token"])
+    return render_template("payments.html", card=get_card(session["card_number"]), csrf_token=session["csrf_token"])
 
 
 @app.get("/exchange")
 @user_login_required
 def exchange_page():
-    return render_template("exchange.html", card=get_card(session["card_id"]), csrf_token=session["csrf_token"])
+    return render_template("exchange.html", card=get_card(session["card_number"]), csrf_token=session["csrf_token"])
 
 
 @app.get("/api")
@@ -234,23 +230,23 @@ def api_documentation_json():
         "security_note": "Raw card API keys are returned once and stored only as salted hashes.",
         "endpoints": [
             {"method": "GET", "path": "/api/health", "auth": "none"},
-            {"method": "GET", "path": "/api/cards/<id>", "auth": "card API key"},
-            {"method": "POST", "path": "/api/cards/<id>/transactions", "auth": "card API key"},
+            {"method": "GET", "path": "/api/cards/<card_number>", "auth": "card API key"},
+            {"method": "POST", "path": "/api/cards/<card_number>/transactions", "auth": "card API key"},
             {"method": "POST", "path": "/api/auth/login", "auth": "card number and password"},
             {"method": "POST", "path": "/api/auth/register", "auth": "none", "description": "Creates a new unlinked card with a server-enforced zero balance and starts a user session"},
             {"method": "GET", "path": "/api/account", "auth": "user session", "description": "Returns the selected card, linked cards, and an estimated total value in the main currency"},
             {"method": "GET", "path": "/api/account/valuation?currency=SGD", "auth": "user session", "description": "Returns the account total converted into a supported display currency"},
             {"method": "POST", "path": "/api/account/select-card", "auth": "user session and CSRF token"},
             {"method": "POST", "path": "/api/account/cards", "auth": "user session and CSRF token", "description": "Creates a linked card under the authenticated holder name with a server-enforced zero balance"},
-            {"method": "POST", "path": "/api/payments", "auth": "user session and CSRF token", "description": "Accepts recipient as either a Card ID or 8-digit card number; legacy to_card_id is also supported"},
+            {"method": "POST", "path": "/api/payments", "auth": "user session and CSRF token", "description": "Identifies the recipient using an 8-digit card number"},
             {"method": "GET", "path": "/api/exchange/quote", "auth": "user session"},
             {"method": "POST", "path": "/api/exchange", "auth": "user session and CSRF token"},
             {"method": "GET", "path": "/admin/cards", "auth": "admin key"},
             {"method": "POST", "path": "/admin/cards", "auth": "admin key"},
-            {"method": "POST", "path": "/admin/cards/<id>/replace-key", "auth": "admin key"},
-            {"method": "PUT", "path": "/admin/cards/<id>/login", "auth": "admin key"},
-            {"method": "PATCH", "path": "/admin/cards/<id>/status", "auth": "admin key"},
-            {"method": "DELETE", "path": "/admin/cards/<id>", "auth": "admin key; zero balance required"},
+            {"method": "POST", "path": "/admin/cards/<card_number>/replace-key", "auth": "admin key"},
+            {"method": "PUT", "path": "/admin/cards/<card_number>/login", "auth": "admin key"},
+            {"method": "PATCH", "path": "/admin/cards/<card_number>/status", "auth": "admin key"},
+            {"method": "DELETE", "path": "/admin/cards/<card_number>", "auth": "admin key; zero balance required"},
             {"method": "GET", "path": "/admin/logs", "auth": "admin key"}
         ]
     })
@@ -261,17 +257,17 @@ def health():
     return jsonify({"status": "ok", "service": "bank-system", "admin_configured": bool(ADMIN_KEY)})
 
 
-@app.get("/api/cards/<int:card_id>")
+@app.get("/api/cards/<card_number>")
 @card_key_required
-def card_details(card_id):
-    return jsonify({"card": get_card(card_id, include_transactions=True)})
+def card_details(card_number):
+    return jsonify({"card": get_card(card_number, include_transactions=True)})
 
 
-@app.post("/api/cards/<int:card_id>/transactions")
+@app.post("/api/cards/<card_number>/transactions")
 @card_key_required
-def transact(card_id):
+def transact(card_number):
     data = json_body()
-    transaction = make_transaction(card_id, data.get("type"), data.get("amount"), data.get("description", ""))
+    transaction = make_transaction(card_number, data.get("type"), data.get("amount"), data.get("description", ""))
     return jsonify({"status": "success", **transaction}), 201
 
 
@@ -282,9 +278,9 @@ def api_login():
     if card is None:
         return jsonify({"error": "Incorrect card number or password"}), 401
     session.clear()
-    session["card_id"] = card["id"]
+    session["card_number"] = card["card_number"]
     session["csrf_token"] = secrets.token_urlsafe(24)
-    return jsonify({"status": "success", "card": card, "linked_cards": get_linked_cards(card["id"]), "csrf_token": session["csrf_token"]})
+    return jsonify({"status": "success", "card": card, "linked_cards": get_linked_cards(card["card_number"]), "csrf_token": session["csrf_token"]})
 
 
 @app.post("/api/auth/register")
@@ -293,7 +289,7 @@ def api_register():
     card, _unused_api_key = create_card(data.get("holder"), data.get("label"), 0, data.get("currency", "SGD"),
                                         password=data.get("password"), created_by="user")
     session.clear()
-    session["card_id"] = card["id"]
+    session["card_number"] = card["card_number"]
     session["csrf_token"] = secrets.token_urlsafe(24)
     return jsonify({"status": "success", "card": card, "csrf_token": session["csrf_token"],
                     "message": "Card created with a zero balance"}), 201
@@ -302,14 +298,14 @@ def api_register():
 @app.get("/api/account")
 @user_login_required
 def api_account():
-    card = get_card(session["card_id"], include_transactions=True)
-    return jsonify({"card": card, "valuation": card_valuation(card), "linked_cards": get_linked_cards(session["card_id"])})
+    card = get_card(session["card_number"], include_transactions=True)
+    return jsonify({"card": card, "valuation": card_valuation(card), "linked_cards": get_linked_cards(session["card_number"])})
 
 
 @app.get("/api/account/valuation")
 @user_login_required
 def api_account_valuation():
-    card = get_card(session["card_id"])
+    card = get_card(session["card_number"])
     return jsonify({"valuation": card_valuation(card, request.args.get("currency"))})
 
 
@@ -318,10 +314,8 @@ def api_account_valuation():
 def api_select_account_card():
     verify_csrf()
     data = json_body()
-    if type(data.get("card_id")) is not int:
-        raise BankError("card_id must be an integer")
-    selected = select_linked_card(session["card_id"], data["card_id"])
-    session["card_id"] = selected["id"]
+    selected = select_linked_card(session["card_number"], data.get("card_number"))
+    session["card_number"] = selected["card_number"]
     return jsonify({"status": "success", "card": selected})
 
 
@@ -330,11 +324,11 @@ def api_select_account_card():
 def api_create_linked_card():
     verify_csrf()
     data = json_body()
-    current = get_card(session["card_id"])
+    current = get_card(session["card_number"])
     card, _unused_api_key = create_card(current["holder"], data.get("label"), 0,
                                         data.get("currency", current["currency"]),
-                                        linked_card_id=current["id"], created_by="user")
-    session["card_id"] = card["id"]
+                                        linked_card_number=current["card_number"], created_by="user")
+    session["card_number"] = card["card_number"]
     return jsonify({"status": "success", "card": card, "message": "Linked card created with a zero balance"}), 201
 
 
@@ -343,8 +337,7 @@ def api_create_linked_card():
 def user_pay():
     verify_csrf()
     data = json_body()
-    recipient = data.get("recipient", data.get("to_card_number", data.get("to_card_id")))
-    payment = make_payment(session["card_id"], recipient, data.get("amount"), data.get("description", ""), data.get("currency"))
+    payment = make_payment(session["card_number"], data.get("to_card_number"), data.get("amount"), data.get("description", ""), data.get("currency"))
     return jsonify({"status": "success", **payment}), 201
 
 
@@ -367,7 +360,7 @@ def exchange_money():
         quote = get_quote(data.get("from_currency"), data.get("to_currency"), data.get("amount"))
     except ExchangeError as error:
         return jsonify({"error": str(error)}), 503
-    return jsonify({"status": "success", **exchange_balance(session["card_id"], quote)}), 201
+    return jsonify({"status": "success", **exchange_balance(session["card_number"], quote)}), 201
 
 
 @app.get("/admin/cards")
@@ -380,34 +373,34 @@ def admin_cards():
 @admin_required
 def admin_create_card():
     data = json_body()
-    card, api_key = create_card(data.get("holder"), data.get("label"), data.get("initial_balance", 0), data.get("currency", "SGD"), data.get("linked_card_id"))
+    card, api_key = create_card(data.get("holder"), data.get("label"), data.get("initial_balance", 0), data.get("currency", "SGD"), data.get("linked_card_number"))
     return jsonify({"status": "success", "card": card, "api_key": api_key, "warning": "Save this key now. It cannot be viewed again."}), 201
 
 
-@app.post("/admin/cards/<int:card_id>/replace-key")
+@app.post("/admin/cards/<card_number>/replace-key")
 @admin_required
-def admin_replace_key(card_id):
-    api_key = replace_card_key(card_id)
+def admin_replace_key(card_number):
+    api_key = replace_card_key(card_number)
     return jsonify({"status": "success", "api_key": api_key, "warning": "The previous key no longer works. Save this key now."})
 
 
-@app.put("/admin/cards/<int:card_id>/login")
+@app.put("/admin/cards/<card_number>/login")
 @admin_required
-def admin_set_login(card_id):
+def admin_set_login(card_number):
     data = json_body()
-    return jsonify({"status": "success", "card": set_card_login(card_id, data.get("password"))})
+    return jsonify({"status": "success", "card": set_card_login(card_number, data.get("password"))})
 
 
-@app.patch("/admin/cards/<int:card_id>/status")
+@app.patch("/admin/cards/<card_number>/status")
 @admin_required
-def admin_set_status(card_id):
-    return jsonify({"status": "success", "card": set_card_status(card_id, json_body().get("status"))})
+def admin_set_status(card_number):
+    return jsonify({"status": "success", "card": set_card_status(card_number, json_body().get("status"))})
 
 
-@app.delete("/admin/cards/<int:card_id>")
+@app.delete("/admin/cards/<card_number>")
 @admin_required
-def admin_delete_card(card_id):
-    deleted = delete_card(card_id)
+def admin_delete_card(card_number):
+    deleted = delete_card(card_number)
     return jsonify({"status": "success", "message": "Card deleted", "card": deleted})
 
 

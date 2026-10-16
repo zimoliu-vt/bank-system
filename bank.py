@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import tempfile
 import threading
@@ -62,15 +63,15 @@ def cents_from_amount(value, allow_zero=False):
 
 def public_card(card, include_transactions=False):
     balances = card.get("balances", {card["currency"]: card.get("balance_cents", 0)})
-    result = {"id": card["id"], "holder": card["holder"], "label": card["label"], "card_number": format_card_number(card["card_number"]), "last4": card["last4"], "currency": card["currency"], "balance": f'{Decimal(balances.get(card["currency"], 0)) / 100:.2f}', "balances": {currency: f"{Decimal(cents) / 100:.2f}" for currency, cents in sorted(balances.items())}, "status": card["status"], "created_at": card["created_at"], "login_configured": bool(card.get("password_hash"))}
+    result = {"holder": card["holder"], "label": card["label"], "card_number": format_card_number(card["card_number"]), "last4": card["last4"], "currency": card["currency"], "balance": f'{Decimal(balances.get(card["currency"], 0)) / 100:.2f}', "balances": {currency: f"{Decimal(cents) / 100:.2f}" for currency, cents in sorted(balances.items())}, "status": card["status"], "created_at": card["created_at"], "login_configured": bool(card.get("password_hash"))}
     if include_transactions:
         result["transactions"] = card.get("transactions", [])
     return result
 
 
-def write_log(action, card_id, detail):
+def write_log(action, card_number, detail):
     logs = read_json(LOGS_FILE, [])
-    logs.insert(0, {"timestamp": now(), "action": action, "card_id": card_id, "detail": detail})
+    logs.insert(0, {"timestamp": now(), "action": action, "card_number": format_card_number(card_number), "detail": detail})
     atomic_write(LOGS_FILE, logs[:1000])
 
 
@@ -95,6 +96,7 @@ def generate_card_number(existing_numbers):
 
 def read_cards():
     cards = read_json(CARDS_FILE, [])
+    legacy_numbers = {card.get("id"): card.get("card_number") for card in cards if card.get("id") is not None and card.get("card_number")}
     existing = {card.get("card_number") for card in cards if card.get("card_number")}
     changed = False
     for card in cards:
@@ -109,8 +111,33 @@ def read_cards():
         if "owner_id" not in card:
             card["owner_id"] = secrets.token_hex(12)
             changed = True
+        for transaction in card.get("transactions", []):
+            if "other_card_id" in transaction:
+                other_number = legacy_numbers.get(transaction.pop("other_card_id"))
+                if other_number:
+                    transaction["other_card_number"] = other_number
+                changed = True
+        if "id" in card:
+            card.pop("id")
+            changed = True
     if changed:
         atomic_write(CARDS_FILE, cards)
+    logs = read_json(LOGS_FILE, [])
+    logs_changed = False
+    for entry in logs:
+        if "card_id" in entry:
+            number = legacy_numbers.get(entry.pop("card_id"))
+            entry["card_number"] = format_card_number(number) if number else "Unknown card"
+            logs_changed = True
+        detail = str(entry.get("detail", ""))
+        migrated_detail = detail
+        for legacy_id, number in legacy_numbers.items():
+            migrated_detail = re.sub(rf"\bcard {legacy_id}\b", f"card {format_card_number(number)}", migrated_detail, flags=re.IGNORECASE)
+        if migrated_detail != detail:
+            entry["detail"] = migrated_detail
+            logs_changed = True
+    if logs_changed:
+        atomic_write(LOGS_FILE, logs)
     return cards
 
 
@@ -123,35 +150,43 @@ def list_cards():
         return [public_card(card) for card in read_cards()]
 
 
-def find_card(cards, card_id):
-    card = next((item for item in cards if item.get("id") == card_id), None)
+def normalize_card_number(value):
+    number = "".join(character for character in str(value or "") if character.isdigit())
+    if len(number) != 8:
+        raise BankError("A valid 8-digit card number is required")
+    return number
+
+
+def find_card(cards, card_number):
+    number = normalize_card_number(card_number)
+    card = next((item for item in cards if item.get("card_number") == number), None)
     if card is None:
         raise BankError("Card not found", 404)
     return card
 
 
-def get_card(card_id, include_transactions=False):
+def get_card(card_number, include_transactions=False):
     with DATA_LOCK:
-        return public_card(find_card(read_cards(), card_id), include_transactions)
+        return public_card(find_card(read_cards(), card_number), include_transactions)
 
 
-def get_linked_cards(card_id):
+def get_linked_cards(card_number):
     with DATA_LOCK:
         cards = read_cards()
-        current = find_card(cards, card_id)
+        current = find_card(cards, card_number)
         return [public_card(card) for card in cards if card.get("owner_id") == current.get("owner_id")]
 
 
-def select_linked_card(current_card_id, selected_card_id):
+def select_linked_card(current_card_number, selected_card_number):
     with DATA_LOCK:
         cards = read_cards()
-        current = find_card(cards, current_card_id)
-        selected = find_card(cards, selected_card_id)
+        current = find_card(cards, current_card_number)
+        selected = find_card(cards, selected_card_number)
         if current.get("owner_id") != selected.get("owner_id"):
             raise BankError("That card is not linked to this account", 403)
         if selected["status"] != "active":
             raise BankError("That card is frozen", 403)
-        write_log("CARD_SELECTED", selected_card_id, f"Switched from linked card {current_card_id}")
+        write_log("CARD_SELECTED", selected["card_number"], f'Switched from linked card {format_card_number(current["card_number"])}')
         return public_card(selected)
 
 
@@ -164,7 +199,7 @@ def password_hash(password):
     return generate_password_hash(password, method="scrypt")
 
 
-def create_card(holder, label, initial_balance=0, currency="SGD", linked_card_id=None, password=None, created_by="admin"):
+def create_card(holder, label, initial_balance=0, currency="SGD", linked_card_number=None, password=None, created_by="admin"):
     holder, label = str(holder or "").strip(), str(label or "Everyday card").strip()
     currency = str(currency or "SGD").strip().upper()
     if not holder:
@@ -180,32 +215,30 @@ def create_card(holder, label, initial_balance=0, currency="SGD", linked_card_id
     with DATA_LOCK:
         cards = read_cards()
         owner_id = secrets.token_hex(12)
-        if linked_card_id is not None and linked_card_id != "":
-            if type(linked_card_id) is not int:
-                raise BankError("linked_card_id must be an integer")
-            linked_card = find_card(cards, linked_card_id)
+        if linked_card_number is not None and linked_card_number != "":
+            linked_card = find_card(cards, linked_card_number)
             if linked_card["holder"].casefold() != holder.casefold():
                 raise BankError("Linked cards must have the same card holder name")
             owner_id = linked_card["owner_id"]
         card_number = generate_card_number({item["card_number"] for item in cards})
-        card = {"id": max((item.get("id", 0) for item in cards), default=0) + 1, "owner_id": owner_id, "holder": holder, "label": label, "card_number": card_number, "last4": card_number[-4:], "currency": currency, "balance_cents": balance_cents, "balances": {currency: balance_cents}, "status": "active", "key_salt": salt, "key_hash": key_hash, "created_by": created_by, "created_at": now(), "transactions": []}
+        card = {"owner_id": owner_id, "holder": holder, "label": label, "card_number": card_number, "last4": card_number[-4:], "currency": currency, "balance_cents": balance_cents, "balances": {currency: balance_cents}, "status": "active", "key_salt": salt, "key_hash": key_hash, "created_by": created_by, "created_at": now(), "transactions": []}
         if login_hash:
             card["password_hash"] = login_hash
         cards.append(card)
         atomic_write(CARDS_FILE, cards)
-        link_detail = f"; linked to card {linked_card_id}" if linked_card_id is not None and linked_card_id != "" else ""
-        write_log("CARD_CREATED", card["id"], f"Created {label} for {holder}{link_detail}")
+        link_detail = f"; linked to card {format_card_number(normalize_card_number(linked_card_number))}" if linked_card_number is not None and linked_card_number != "" else ""
+        write_log("CARD_CREATED", card_number, f"Created {label} for {holder}{link_detail}")
         return public_card(card), api_key
 
 
-def set_card_login(card_id, password):
+def set_card_login(card_number, password):
     login_hash = password_hash(password)
     with DATA_LOCK:
         cards = read_cards()
-        card = find_card(cards, card_id)
+        card = find_card(cards, card_number)
         card["password_hash"] = login_hash
         atomic_write(CARDS_FILE, cards)
-        write_log("LOGIN_CONFIGURED", card_id, "Card-number login configured")
+        write_log("LOGIN_CONFIGURED", card["card_number"], "Card-number login configured")
         return public_card(card)
 
 
@@ -219,67 +252,67 @@ def authenticate_card(card_number, password):
             return None
         if card["status"] != "active":
             raise BankError("This account is frozen", 403)
-        write_log("LOGIN", card["id"], "User logged in")
+        write_log("LOGIN", card["card_number"], "User logged in")
         return public_card(card)
 
 
-def verify_card_key(card_id, api_key):
+def verify_card_key(card_number, api_key):
     if not isinstance(api_key, str) or len(api_key) > 200:
         return False
     try:
         with DATA_LOCK:
-            card = find_card(read_cards(), card_id)
+            card = find_card(read_cards(), card_number)
             _, candidate = hash_key(api_key, card["key_salt"])
             return hmac.compare_digest(candidate, card["key_hash"])
     except BankError:
         return False
 
 
-def replace_card_key(card_id):
+def replace_card_key(card_number):
     api_key = f"bank_card_{secrets.token_urlsafe(32)}"
     salt, key_hash = hash_key(api_key)
     with DATA_LOCK:
         cards = read_cards()
-        card = find_card(cards, card_id)
+        card = find_card(cards, card_number)
         card["key_salt"], card["key_hash"] = salt, key_hash
         atomic_write(CARDS_FILE, cards)
-        write_log("KEY_REPLACED", card_id, "Card API key replaced")
+        write_log("KEY_REPLACED", card["card_number"], "Card API key replaced")
     return api_key
 
 
-def set_card_status(card_id, status):
+def set_card_status(card_number, status):
     if status not in {"active", "frozen"}:
         raise BankError("Status must be active or frozen")
     with DATA_LOCK:
         cards = read_cards()
-        card = find_card(cards, card_id)
+        card = find_card(cards, card_number)
         card["status"] = status
         atomic_write(CARDS_FILE, cards)
-        write_log("STATUS_CHANGED", card_id, f"Card changed to {status}")
+        write_log("STATUS_CHANGED", card["card_number"], f"Card changed to {status}")
         return public_card(card)
 
 
-def delete_card(card_id):
+def delete_card(card_number):
     with DATA_LOCK:
         cards = read_cards()
-        card = find_card(cards, card_id)
+        card = find_card(cards, card_number)
         if any(card.get("balances", {card["currency"]: card.get("balance_cents", 0)}).values()):
             raise BankError("All currency balances must be zero before deleting a card", 409)
         deleted = public_card(card)
         cards.remove(card)
         atomic_write(CARDS_FILE, cards)
-        write_log("CARD_DELETED", card_id, f'Deleted {card["label"]} for {card["holder"]}')
+        write_log("CARD_DELETED", card["card_number"], f'Deleted {card["label"]} for {card["holder"]}')
         return deleted
 
 
-def make_transaction(card_id, transaction_type, amount, description=""):
+def make_transaction(card_number, transaction_type, amount, description=""):
     if transaction_type not in {"deposit", "withdrawal"}:
         raise BankError("Type must be deposit or withdrawal")
     amount_cents = cents_from_amount(amount)
     description = str(description or "").strip()[:160]
     with DATA_LOCK:
         cards = read_cards()
-        card = find_card(cards, card_id)
+        card = find_card(cards, card_number)
         if card["status"] != "active":
             raise BankError("Card is frozen", 403)
         balances = card.setdefault("balances", {card["currency"]: card.get("balance_cents", 0)})
@@ -291,29 +324,20 @@ def make_transaction(card_id, transaction_type, amount, description=""):
         card.setdefault("transactions", []).insert(0, transaction)
         card["transactions"] = card["transactions"][:200]
         atomic_write(CARDS_FILE, cards)
-        write_log(transaction_type.upper(), card_id, f'{transaction["amount"]} {card["currency"]}')
+        write_log(transaction_type.upper(), card["card_number"], f'{transaction["amount"]} {card["currency"]}')
         return {"card": public_card(card), "transaction": transaction}
 
 
-def make_payment(from_card_id, recipient, amount, description="", currency=None):
+def make_payment(from_card_number, to_card_number, amount, description="", currency=None):
     amount_cents = cents_from_amount(amount)
     description = str(description or "").strip()[:160]
     transfer_id = secrets.token_hex(10)
     created_at = now()
     with DATA_LOCK:
         cards = read_cards()
-        sender = find_card(cards, from_card_id)
-        recipient_text = "".join(character for character in str(recipient or "") if character.isdigit())
-        if not recipient_text:
-            raise BankError("Enter a recipient card ID or 8-digit card number")
-        if len(recipient_text) == 8:
-            recipient_card = next((card for card in cards if card.get("card_number") == recipient_text), None)
-            if recipient_card is None:
-                raise BankError("Recipient card number not found", 404)
-        else:
-            recipient_card = find_card(cards, int(recipient_text))
-        to_card_id = recipient_card["id"]
-        if from_card_id == to_card_id:
+        sender = find_card(cards, from_card_number)
+        recipient_card = find_card(cards, to_card_number)
+        if sender["card_number"] == recipient_card["card_number"]:
             raise BankError("A card cannot pay itself")
         if sender["status"] != "active":
             raise BankError("Sender card is frozen", 403)
@@ -331,18 +355,18 @@ def make_payment(from_card_id, recipient, amount, description="", currency=None)
         sender["balance_cents"] = sender_balances.get(sender["currency"], 0)
         recipient_card["balance_cents"] = recipient_balances.get(recipient_card["currency"], 0)
         amount_text = f"{Decimal(amount_cents) / 100:.2f}"
-        sender_transaction = {"id": secrets.token_hex(8), "transfer_id": transfer_id, "type": "payment_sent", "amount": amount_text, "currency": transfer_currency, "description": description, "other_card_id": to_card_id, "created_at": created_at}
-        recipient_transaction = {"id": secrets.token_hex(8), "transfer_id": transfer_id, "type": "payment_received", "amount": amount_text, "currency": transfer_currency, "description": description, "other_card_id": from_card_id, "created_at": created_at}
+        sender_transaction = {"id": secrets.token_hex(8), "transfer_id": transfer_id, "type": "payment_sent", "amount": amount_text, "currency": transfer_currency, "description": description, "other_card_number": recipient_card["card_number"], "created_at": created_at}
+        recipient_transaction = {"id": secrets.token_hex(8), "transfer_id": transfer_id, "type": "payment_received", "amount": amount_text, "currency": transfer_currency, "description": description, "other_card_number": sender["card_number"], "created_at": created_at}
         sender.setdefault("transactions", []).insert(0, sender_transaction)
         recipient_card.setdefault("transactions", []).insert(0, recipient_transaction)
         sender["transactions"] = sender["transactions"][:200]
         recipient_card["transactions"] = recipient_card["transactions"][:200]
         atomic_write(CARDS_FILE, cards)
-        write_log("PAYMENT", from_card_id, f"{amount_text} {transfer_currency} to card {to_card_id}; transfer {transfer_id}; no conversion")
-        return {"payment": {"transfer_id": transfer_id, "from_card_id": from_card_id, "to_card_id": to_card_id, "amount": amount_text, "currency": transfer_currency, "conversion": "none; recipient keeps the original currency", "description": description, "created_at": created_at}, "card": public_card(sender)}
+        write_log("PAYMENT", sender["card_number"], f'{amount_text} {transfer_currency} to card {format_card_number(recipient_card["card_number"])}; transfer {transfer_id}; no conversion')
+        return {"payment": {"transfer_id": transfer_id, "from_card_number": format_card_number(sender["card_number"]), "to_card_number": format_card_number(recipient_card["card_number"]), "amount": amount_text, "currency": transfer_currency, "conversion": "none; recipient keeps the original currency", "description": description, "created_at": created_at}, "card": public_card(sender)}
 
 
-def exchange_balance(card_id, quote):
+def exchange_balance(card_number, quote):
     source, target = quote["from_currency"], quote["to_currency"]
     if source not in ALLOWED_CURRENCIES or target not in ALLOWED_CURRENCIES:
         raise BankError("Unsupported currency")
@@ -350,7 +374,7 @@ def exchange_balance(card_id, quote):
     target_cents = cents_from_amount(quote["converted_amount"])
     with DATA_LOCK:
         cards = read_cards()
-        card = find_card(cards, card_id)
+        card = find_card(cards, card_number)
         if card["status"] != "active":
             raise BankError("Card is frozen", 403)
         balances = card.setdefault("balances", {card["currency"]: card.get("balance_cents", 0)})
@@ -363,10 +387,11 @@ def exchange_balance(card_id, quote):
         card.setdefault("transactions", []).insert(0, transaction)
         card["transactions"] = card["transactions"][:200]
         atomic_write(CARDS_FILE, cards)
-        write_log("CURRENCY_EXCHANGE", card_id, f'{quote["amount"]} {source} to {quote["converted_amount"]} {target} at {quote["rate"]}')
+        write_log("CURRENCY_EXCHANGE", card["card_number"], f'{quote["amount"]} {source} to {quote["converted_amount"]} {target} at {quote["rate"]}')
         return {"card": public_card(card), "transaction": transaction, "quote": quote}
 
 
 def get_logs():
     with DATA_LOCK:
+        read_cards()
         return read_json(LOGS_FILE, [])

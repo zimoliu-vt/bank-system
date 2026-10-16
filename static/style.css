@@ -74,7 +74,6 @@ input::placeholder { color:#99a39e; }
 .bank-card.frozen { filter:saturate(.28); }
 .bank-card header,.bank-card footer { position:relative; z-index:1; display:flex; justify-content:space-between; gap:12px; }
 .bank-card h3 { margin:0; font-size:20px; }
-.bank-card .card-id { display:inline-block; margin-top:14px; padding:5px 10px; border:1px solid rgba(255,255,255,.28); border-radius:999px; background:rgba(255,255,255,.08); font-size:12px; font-weight:800; }
 .bank-card .card-number { margin-top:18px; font:600 20px "SFMono-Regular",Consolas,monospace; letter-spacing:.13em; }
 .bank-card .balance { display:flex; flex-wrap:wrap; gap:7px 24px; margin:28px 0 8px; font-size:clamp(23px,4vw,31px); font-weight:850; letter-spacing:-.025em; }
 .bank-card .balance .empty { color:#cfe3dc; font-size:16px; font-weight:650; }
@@ -110,7 +109,6 @@ dialog code { display:block; overflow-wrap:anywhere; margin:18px 0; padding:16px
 .account-card::before { content:""; position:absolute; z-index:-1; width:330px; height:330px; right:-115px; top:-175px; border:1px solid rgba(255,255,255,.14); border-radius:50%; box-shadow:0 0 0 52px rgba(255,255,255,.025); }
 .account-card>strong,.account-balance small,.account-balance b { display:block; }
 .account-card-top { display:flex; align-items:center; justify-content:space-between; gap:16px; font-weight:750; }
-.account-card-id { padding:6px 10px; border:1px solid rgba(255,255,255,.28); border-radius:999px; background:rgba(255,255,255,.08); color:#e2f0ea; font-size:12px; letter-spacing:.03em; white-space:nowrap; }
 .account-card>strong { margin-top:26px; font:650 23px "SFMono-Regular",Consolas,monospace; letter-spacing:.14em; }
 .account-balance { margin-top:54px; }
 .account-balance small { color:#cfe3dc; font-weight:650; }

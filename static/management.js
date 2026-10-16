@@ -38,15 +38,14 @@ async function loadCards() {
       return `
       <article class="bank-card ${card.status}">
         <header><h3>${escapeHtml(card.label)}</h3><span>${escapeHtml(card.status)}</span></header>
-        <div class="card-id">Card ID: ${card.id}</div>
         <div class="card-number">${escapeHtml(card.card_number)}</div>
         <div class="balance">${balanceHtml}</div>
         <footer><span>${escapeHtml(card.holder)} · ${card.login_configured ? "Login ready" : "No login"}</span>
           <span class="card-actions">
-            <button data-action="login" data-id="${card.id}">${card.login_configured ? "Reset login" : "Set login"}</button>
-            <button data-action="key" data-id="${card.id}">New API key</button>
-            <button data-action="status" data-id="${card.id}" data-status="${card.status === "active" ? "frozen" : "active"}">${card.status === "active" ? "Freeze" : "Unfreeze"}</button>
-            <button class="danger-button" data-action="delete" data-id="${card.id}" data-label="${escapeHtml(card.label)}">Delete</button>
+            <button data-action="login" data-number="${card.card_number.replace(/\s/g, "")}">${card.login_configured ? "Reset login" : "Set login"}</button>
+            <button data-action="key" data-number="${card.card_number.replace(/\s/g, "")}">New API key</button>
+            <button data-action="status" data-number="${card.card_number.replace(/\s/g, "")}" data-status="${card.status === "active" ? "frozen" : "active"}">${card.status === "active" ? "Freeze" : "Unfreeze"}</button>
+            <button class="danger-button" data-action="delete" data-number="${card.card_number.replace(/\s/g, "")}" data-label="${escapeHtml(card.label)}">Delete</button>
           </span>
         </footer>
       </article>`;
@@ -64,7 +63,7 @@ document.querySelector("#create-form").addEventListener("submit", async event =>
   try {
     const data = Object.fromEntries(new FormData(event.currentTarget));
     const matchingCard = knownCards.find(card => card.holder.trim().toLocaleLowerCase() === data.holder.trim().toLocaleLowerCase());
-    if (matchingCard && confirm(`${matchingCard.holder} already has ${matchingCard.label} (${matchingCard.card_number}). Is this the same person?\n\nChoose OK to link both cards, or Cancel to keep them as separate people.`)) data.linked_card_id = matchingCard.id;
+    if (matchingCard && confirm(`${matchingCard.holder} already has ${matchingCard.label} (${matchingCard.card_number}). Is this the same person?\n\nChoose OK to link both cards, or Cancel to keep them as separate people.`)) data.linked_card_number = matchingCard.card_number;
     const result = await api("/admin/cards", {method: "POST", body: JSON.stringify(data)});
     showKey(result.api_key);
     event.currentTarget.reset();
@@ -78,18 +77,18 @@ cardsNode.addEventListener("click", async event => {
   if (!button) return;
   try {
     if (button.dataset.action === "login") {
-      document.querySelector("#login-card-id").value = button.dataset.id;
+      document.querySelector("#login-card-number").value = button.dataset.number;
       document.querySelector("#login-password").value = "";
       loginDialog.showModal();
     } else if (button.dataset.action === "key") {
       if (!confirm("Replace this card's API key? The old key will stop working.")) return;
-      showKey((await api(`/admin/cards/${button.dataset.id}/replace-key`, {method: "POST", body: "{}"})).api_key);
+      showKey((await api(`/admin/cards/${button.dataset.number}/replace-key`, {method: "POST", body: "{}"})).api_key);
     } else if (button.dataset.action === "delete") {
       if (!confirm(`Permanently delete ${button.dataset.label}? The balance must be zero and this cannot be undone.`)) return;
-      await api(`/admin/cards/${button.dataset.id}`, {method: "DELETE"});
+      await api(`/admin/cards/${button.dataset.number}`, {method: "DELETE"});
       await loadCards();
     } else {
-      await api(`/admin/cards/${button.dataset.id}/status`, {method: "PATCH", body: JSON.stringify({status: button.dataset.status})});
+      await api(`/admin/cards/${button.dataset.number}/status`, {method: "PATCH", body: JSON.stringify({status: button.dataset.status})});
       await loadCards();
     }
   } catch (error) { message(error.message, true); }
@@ -98,9 +97,9 @@ cardsNode.addEventListener("click", async event => {
 document.querySelector("#login-form").addEventListener("submit", async event => {
   event.preventDefault();
   try {
-    const cardId = document.querySelector("#login-card-id").value;
+    const cardNumber = document.querySelector("#login-card-number").value;
     const password = document.querySelector("#login-password").value;
-    await api(`/admin/cards/${cardId}/login`, {method: "PUT", body: JSON.stringify({password})});
+    await api(`/admin/cards/${cardNumber}/login`, {method: "PUT", body: JSON.stringify({password})});
     loginDialog.close();
     await loadCards();
     message("Card login saved. The user can now log in with the displayed card number.");
