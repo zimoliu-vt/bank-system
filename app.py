@@ -6,9 +6,9 @@ from pathlib import Path
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 
-from bank import (BankError, authenticate_card, create_card, delete_card, exchange_balance, get_card, get_logs, list_cards,
+from bank import (BankError, authenticate_card, create_card, delete_card, exchange_balance, get_card, get_linked_cards, get_logs, list_cards,
                   make_payment, make_transaction, replace_card_key, set_card_status,
-                  set_card_login, verify_card_key)
+                  select_linked_card, set_card_login, verify_card_key)
 from exchange import ExchangeError, get_quote
 
 
@@ -116,7 +116,25 @@ def logout():
 @app.get("/account")
 @user_login_required
 def account():
-    return render_template("account.html", card=get_card(session["card_id"], include_transactions=True))
+    session.setdefault("csrf_token", secrets.token_urlsafe(24))
+    return render_template("account.html", card=get_card(session["card_id"], include_transactions=True),
+                           linked_cards=get_linked_cards(session["card_id"]), csrf_token=session["csrf_token"])
+
+
+@app.post("/account/select-card")
+@user_login_required
+def select_account_card():
+    expected = session.get("csrf_token", "")
+    supplied = request.form.get("csrf_token", "")
+    if not expected or not supplied or not hmac.compare_digest(expected, supplied):
+        raise BankError("Invalid session token. Refresh the page and try again.", 403)
+    try:
+        selected_id = int(request.form.get("card_id", ""))
+    except (TypeError, ValueError) as error:
+        raise BankError("A valid card ID is required") from error
+    selected = select_linked_card(session["card_id"], selected_id)
+    session["card_id"] = selected["id"]
+    return redirect(url_for("account"))
 
 
 @app.get("/management")
@@ -153,7 +171,8 @@ def api_documentation_json():
             {"method": "GET", "path": "/api/cards/<id>", "auth": "card API key"},
             {"method": "POST", "path": "/api/cards/<id>/transactions", "auth": "card API key"},
             {"method": "POST", "path": "/api/auth/login", "auth": "card number and password"},
-            {"method": "GET", "path": "/api/account", "auth": "user session"},
+            {"method": "GET", "path": "/api/account", "auth": "user session", "description": "Returns the selected card and all linked cards"},
+            {"method": "POST", "path": "/api/account/select-card", "auth": "user session and CSRF token"},
             {"method": "POST", "path": "/api/payments", "auth": "user session and CSRF token"},
             {"method": "GET", "path": "/api/exchange/quote", "auth": "user session"},
             {"method": "POST", "path": "/api/exchange", "auth": "user session and CSRF token"},
@@ -196,13 +215,25 @@ def api_login():
     session.clear()
     session["card_id"] = card["id"]
     session["csrf_token"] = secrets.token_urlsafe(24)
-    return jsonify({"status": "success", "card": card, "csrf_token": session["csrf_token"]})
+    return jsonify({"status": "success", "card": card, "linked_cards": get_linked_cards(card["id"]), "csrf_token": session["csrf_token"]})
 
 
 @app.get("/api/account")
 @user_login_required
 def api_account():
-    return jsonify({"card": get_card(session["card_id"], include_transactions=True)})
+    return jsonify({"card": get_card(session["card_id"], include_transactions=True), "linked_cards": get_linked_cards(session["card_id"])})
+
+
+@app.post("/api/account/select-card")
+@user_login_required
+def api_select_account_card():
+    verify_csrf()
+    data = json_body()
+    if type(data.get("card_id")) is not int:
+        raise BankError("card_id must be an integer")
+    selected = select_linked_card(session["card_id"], data["card_id"])
+    session["card_id"] = selected["id"]
+    return jsonify({"status": "success", "card": selected})
 
 
 @app.post("/api/payments")
@@ -246,7 +277,7 @@ def admin_cards():
 @admin_required
 def admin_create_card():
     data = json_body()
-    card, api_key = create_card(data.get("holder"), data.get("label"), data.get("initial_balance", 0), data.get("currency", "SGD"))
+    card, api_key = create_card(data.get("holder"), data.get("label"), data.get("initial_balance", 0), data.get("currency", "SGD"), data.get("linked_card_id"))
     return jsonify({"status": "success", "card": card, "api_key": api_key, "warning": "Save this key now. It cannot be viewed again."}), 201
 
 

@@ -4,6 +4,7 @@ const notice = document.querySelector("#notice");
 const keyDialog = document.querySelector("#key-dialog");
 const loginDialog = document.querySelector("#login-dialog");
 const newKey = document.querySelector("#new-key");
+let knownCards = [];
 
 const headers = () => ({"Content-Type": "application/json", "X-Admin-Key": adminInput.value});
 
@@ -28,6 +29,7 @@ function escapeHtml(value) {
 async function loadCards() {
   try {
     const {cards} = await api("/admin/cards");
+    knownCards = cards;
     cardsNode.innerHTML = cards.length ? cards.map(card => `
       <article class="bank-card ${card.status}">
         <header><h3>${escapeHtml(card.label)}</h3><span>${escapeHtml(card.status)}</span></header>
@@ -54,7 +56,10 @@ document.querySelector("#refresh").addEventListener("click", loadCards);
 document.querySelector("#create-form").addEventListener("submit", async event => {
   event.preventDefault();
   try {
-    const result = await api("/admin/cards", {method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget)))});
+    const data = Object.fromEntries(new FormData(event.currentTarget));
+    const matchingCard = knownCards.find(card => card.holder.trim().toLocaleLowerCase() === data.holder.trim().toLocaleLowerCase());
+    if (matchingCard && confirm(`${matchingCard.holder} already has ${matchingCard.label} (${matchingCard.card_number}). Is this the same person?\n\nChoose OK to link both cards, or Cancel to keep them as separate people.`)) data.linked_card_id = matchingCard.id;
+    const result = await api("/admin/cards", {method: "POST", body: JSON.stringify(data)});
     showKey(result.api_key);
     event.currentTarget.reset();
     await loadCards();

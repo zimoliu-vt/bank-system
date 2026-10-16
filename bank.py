@@ -106,6 +106,9 @@ def read_cards():
         if "balances" not in card:
             card["balances"] = {card["currency"]: card.get("balance_cents", 0)}
             changed = True
+        if "owner_id" not in card:
+            card["owner_id"] = secrets.token_hex(12)
+            changed = True
     if changed:
         atomic_write(CARDS_FILE, cards)
     return cards
@@ -132,7 +135,27 @@ def get_card(card_id, include_transactions=False):
         return public_card(find_card(read_cards(), card_id), include_transactions)
 
 
-def create_card(holder, label, initial_balance=0, currency="SGD"):
+def get_linked_cards(card_id):
+    with DATA_LOCK:
+        cards = read_cards()
+        current = find_card(cards, card_id)
+        return [public_card(card) for card in cards if card.get("owner_id") == current.get("owner_id")]
+
+
+def select_linked_card(current_card_id, selected_card_id):
+    with DATA_LOCK:
+        cards = read_cards()
+        current = find_card(cards, current_card_id)
+        selected = find_card(cards, selected_card_id)
+        if current.get("owner_id") != selected.get("owner_id"):
+            raise BankError("That card is not linked to this account", 403)
+        if selected["status"] != "active":
+            raise BankError("That card is frozen", 403)
+        write_log("CARD_SELECTED", selected_card_id, f"Switched from linked card {current_card_id}")
+        return public_card(selected)
+
+
+def create_card(holder, label, initial_balance=0, currency="SGD", linked_card_id=None):
     holder, label = str(holder or "").strip(), str(label or "Everyday card").strip()
     currency = str(currency or "SGD").strip().upper()
     if not holder:
@@ -146,11 +169,20 @@ def create_card(holder, label, initial_balance=0, currency="SGD"):
     salt, key_hash = hash_key(api_key)
     with DATA_LOCK:
         cards = read_cards()
+        owner_id = secrets.token_hex(12)
+        if linked_card_id is not None and linked_card_id != "":
+            if type(linked_card_id) is not int:
+                raise BankError("linked_card_id must be an integer")
+            linked_card = find_card(cards, linked_card_id)
+            if linked_card["holder"].casefold() != holder.casefold():
+                raise BankError("Linked cards must have the same card holder name")
+            owner_id = linked_card["owner_id"]
         card_number = generate_card_number({item["card_number"] for item in cards})
-        card = {"id": max((item.get("id", 0) for item in cards), default=0) + 1, "holder": holder, "label": label, "card_number": card_number, "last4": card_number[-4:], "currency": currency, "balance_cents": balance_cents, "balances": {currency: balance_cents}, "status": "active", "key_salt": salt, "key_hash": key_hash, "created_at": now(), "transactions": []}
+        card = {"id": max((item.get("id", 0) for item in cards), default=0) + 1, "owner_id": owner_id, "holder": holder, "label": label, "card_number": card_number, "last4": card_number[-4:], "currency": currency, "balance_cents": balance_cents, "balances": {currency: balance_cents}, "status": "active", "key_salt": salt, "key_hash": key_hash, "created_at": now(), "transactions": []}
         cards.append(card)
         atomic_write(CARDS_FILE, cards)
-        write_log("CARD_CREATED", card["id"], f"Created {label} for {holder}")
+        link_detail = f"; linked to card {linked_card_id}" if linked_card_id is not None and linked_card_id != "" else ""
+        write_log("CARD_CREATED", card["id"], f"Created {label} for {holder}{link_detail}")
         return public_card(card), api_key
 
 

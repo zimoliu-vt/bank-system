@@ -1,6 +1,6 @@
 # Bank System
 
-A local Flask demonstration app with card-number login, private account pages, multi-currency balances, reference-rate currency exchange, transaction history, protected card-to-card payments, audit logs, and a separate API key for every card.
+A local Flask demonstration app with card-number login, linked cards for the same person, private account pages, multi-currency balances, reference-rate currency exchange, transaction history, protected card-to-card payments, audit logs, and a separate API key for every card.
 
 > This is an educational demo, not a real bank or payment processor. Do not use real card details, credentials, or financial data.
 
@@ -28,6 +28,7 @@ The development server listens on all local interfaces. Keep port 2501 blocked f
 - Management operations require `BANK_ADMIN_KEY` in the `X-Admin-Key` header.
 - Every card has a different generated `bank_card_...` API key.
 - Users log in with their generated 8-digit demo card number and a hashed password configured by an administrator.
+- When a new card has the same holder name, management asks whether it belongs to the same person. Linked cards appear in a chooser after login.
 - Browser and API payments require an authenticated session plus a CSRF token.
 - Payments can be sent from any currency balance the sender owns. Cross-currency payments are never exchanged: the recipient receives the same numeric amount in the selected currency as a separate balance.
 - Users can explicitly exchange money between their own balances using the latest available Frankfurter reference rate.
