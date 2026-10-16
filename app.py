@@ -3,7 +3,7 @@ import hmac
 import secrets
 import time
 from datetime import timedelta
-from decimal import InvalidOperation
+from decimal import Decimal, InvalidOperation
 from functools import wraps
 from pathlib import Path
 
@@ -35,6 +35,14 @@ app.config.update(SECRET_KEY=os.environ.get("BANK_SESSION_SECRET", ""), SESSION_
 ADMIN_KEY = os.environ.get("BANK_ADMIN_KEY", "").strip()
 ADMIN_CARD_NUMBER = "".join(character for character in os.environ.get("BANK_ADMIN_CARD_NUMBER", "44808087") if character.isdigit())
 ADMIN_AUTH_SECONDS = 7 * 24 * 60 * 60
+
+
+@app.template_filter("money")
+def format_money(value):
+    try:
+        return f"{Decimal(str(value)):,.2f}"
+    except (InvalidOperation, TypeError, ValueError):
+        return str(value)
 
 
 def json_body():

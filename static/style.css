@@ -112,11 +112,12 @@ dialog code { display:block; overflow-wrap:anywhere; margin:18px 0; padding:16px
 .account-card>strong { margin-top:26px; font:650 23px "SFMono-Regular",Consolas,monospace; letter-spacing:.14em; }
 .account-balance { margin-top:54px; }
 .account-balance small { color:#cfe3dc; font-weight:650; }
-.account-balance .account-total { margin-top:7px; font-size:clamp(36px,7vw,60px); line-height:1.05; letter-spacing:-.05em; overflow-wrap:anywhere; }
+.account-balance .account-total { margin-top:7px; font-size:clamp(32px,5vw,60px); line-height:1.05; letter-spacing:-.045em; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
 .balance-breakdown { display:flex; flex-wrap:wrap; gap:8px 20px; margin-top:22px; }
 .balance-breakdown span { padding:7px 11px; border:1px solid rgba(255,255,255,.18); border-radius:999px; background:rgba(255,255,255,.07); color:#d8e9e2; font-size:14px; }
 .balance-breakdown strong { color:#fff; }
 .account-balance .valuation-note { margin-top:12px; color:#f4d894; font-size:12px; }
+.account-balance .valuation-note.hidden { display:none; }
 .linked-card-picker { margin-bottom:20px; }
 .linked-card-picker > span { display:block; margin-bottom:9px; color:var(--muted); font-size:12px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
 .linked-card-picker > div { display:flex; flex-wrap:wrap; gap:10px; }
