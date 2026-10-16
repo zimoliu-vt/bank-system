@@ -117,8 +117,18 @@ def logout():
 @user_login_required
 def account():
     session.setdefault("csrf_token", secrets.token_urlsafe(24))
-    return render_template("account.html", card=get_card(session["card_id"], include_transactions=True),
-                           linked_cards=get_linked_cards(session["card_id"]), csrf_token=session["csrf_token"])
+    card = get_card(session["card_id"], include_transactions=True)
+    transaction_days = sorted({item.get("created_at", "")[:10] for item in card["transactions"] if item.get("created_at")}, reverse=True)
+    requested_day = request.args.get("day", "")
+    selected_day = requested_day if requested_day in transaction_days else (transaction_days[0] if transaction_days else "")
+    selected_transactions = [item for item in card["transactions"] if item.get("created_at", "")[:10] == selected_day]
+    day_index = transaction_days.index(selected_day) if selected_day else -1
+    newer_day = transaction_days[day_index - 1] if day_index > 0 else None
+    older_day = transaction_days[day_index + 1] if 0 <= day_index < len(transaction_days) - 1 else None
+    return render_template("account.html", card=card, linked_cards=get_linked_cards(session["card_id"]),
+                           csrf_token=session["csrf_token"], transaction_days=transaction_days,
+                           selected_day=selected_day, selected_transactions=selected_transactions,
+                           newer_day=newer_day, older_day=older_day)
 
 
 @app.post("/account/select-card")
