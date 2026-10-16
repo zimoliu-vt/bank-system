@@ -28,6 +28,7 @@ The development server listens on all local interfaces. Keep port 2501 blocked f
 - Management operations require `BANK_ADMIN_KEY` in the `X-Admin-Key` header.
 - Every card has a different generated `bank_card_...` API key.
 - Users log in with their generated 8-digit demo card number and a hashed password configured by an administrator.
+- The browser locale suggests a regional display currency for account totals and new cards; no GPS permission is requested, and the selection remains editable.
 - When a new card has the same holder name, management asks whether it belongs to the same person. Linked cards appear in a chooser after login.
 - Browser and API payments require an authenticated session plus a CSRF token.
 - Payment recipients can be identified by either their short Card ID or full 8-digit card number.

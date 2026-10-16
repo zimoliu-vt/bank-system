@@ -68,6 +68,7 @@ document.querySelector("#create-form").addEventListener("submit", async event =>
     const result = await api("/admin/cards", {method: "POST", body: JSON.stringify(data)});
     showKey(result.api_key);
     event.currentTarget.reset();
+    if (window.detectedBankCurrency) document.querySelector("#new-card-currency").value = window.detectedBankCurrency;
     await loadCards();
   } catch (error) { message(error.message, true); }
 });

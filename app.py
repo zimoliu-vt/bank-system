@@ -79,9 +79,12 @@ def verify_csrf():
         raise BankError("Invalid session token. Refresh the page and try again.", 403)
 
 
-def card_valuation(card):
+def card_valuation(card, target_currency=None):
+    target = str(target_currency or card["currency"]).strip().upper()
+    if target not in {"SGD", "USD", "EUR", "GBP", "CNY"}:
+        target = card["currency"]
     try:
-        return get_total_value(card["balances"], card["currency"])
+        return get_total_value(card["balances"], target)
     except (ExchangeError, InvalidOperation, ValueError):
         return {"currency": card["currency"], "amount": card["balance"], "rate_date": None, "complete": False}
 
@@ -191,6 +194,7 @@ def api_documentation_json():
             {"method": "POST", "path": "/api/cards/<id>/transactions", "auth": "card API key"},
             {"method": "POST", "path": "/api/auth/login", "auth": "card number and password"},
             {"method": "GET", "path": "/api/account", "auth": "user session", "description": "Returns the selected card, linked cards, and an estimated total value in the main currency"},
+            {"method": "GET", "path": "/api/account/valuation?currency=SGD", "auth": "user session", "description": "Returns the account total converted into a supported display currency"},
             {"method": "POST", "path": "/api/account/select-card", "auth": "user session and CSRF token"},
             {"method": "POST", "path": "/api/payments", "auth": "user session and CSRF token", "description": "Accepts recipient as either a Card ID or 8-digit card number; legacy to_card_id is also supported"},
             {"method": "GET", "path": "/api/exchange/quote", "auth": "user session"},
@@ -242,6 +246,13 @@ def api_login():
 def api_account():
     card = get_card(session["card_id"], include_transactions=True)
     return jsonify({"card": card, "valuation": card_valuation(card), "linked_cards": get_linked_cards(session["card_id"])})
+
+
+@app.get("/api/account/valuation")
+@user_login_required
+def api_account_valuation():
+    card = get_card(session["card_id"])
+    return jsonify({"valuation": card_valuation(card, request.args.get("currency"))})
 
 
 @app.post("/api/account/select-card")

@@ -1,0 +1,8 @@
+const REGION_CURRENCIES={SG:"SGD",US:"USD",GB:"GBP",CN:"CNY",AT:"EUR",BE:"EUR",HR:"EUR",CY:"EUR",EE:"EUR",FI:"EUR",FR:"EUR",DE:"EUR",GR:"EUR",IE:"EUR",IT:"EUR",LV:"EUR",LT:"EUR",LU:"EUR",MT:"EUR",NL:"EUR",PT:"EUR",SK:"EUR",SI:"EUR",ES:"EUR"};
+function detectedCurrency(){try{const locale=Intl.DateTimeFormat().resolvedOptions().locale;const region=new Intl.Locale(locale).region;return {currency:REGION_CURRENCIES[region]||null,region}}catch{return {currency:null,region:null}}}
+const regional=detectedCurrency();
+window.detectedBankCurrency=regional.currency;
+const newCardCurrency=document.querySelector("#new-card-currency"),detectedCurrencyNote=document.querySelector("#detected-currency");
+if(newCardCurrency&&regional.currency){newCardCurrency.value=regional.currency;if(detectedCurrencyNote)detectedCurrencyNote.textContent=`Suggested from browser region ${regional.region}`}
+const accountCard=document.querySelector(".account-card"),accountTotal=document.querySelector("#account-total"),valuationLabel=document.querySelector("#valuation-label"),valuationNote=document.querySelector("#valuation-note");
+if(accountCard&&accountTotal&&regional.currency&&regional.currency!==accountCard.dataset.mainCurrency){fetch(`/api/account/valuation?currency=${encodeURIComponent(regional.currency)}`).then(response=>response.json().then(body=>({ok:response.ok,body}))).then(({ok,body})=>{if(!ok||!body.valuation)return;const value=body.valuation;accountTotal.textContent=`${value.currency} ${value.amount}`;valuationLabel.textContent=`Total value${value.rate_date?` · rates ${value.rate_date}`:""} · local ${regional.region}`;valuationNote.classList.toggle("hidden",value.complete)}).catch(()=>{})}

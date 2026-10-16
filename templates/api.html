@@ -6,6 +6,7 @@
   -H "Content-Type: application/json" \
   -d '{"card_number":"40000000","password":"your-password"}'</pre></section>
 <section class="endpoint"><span class="method get">GET</span><code>/api/account</code><p>Return the selected card, its transaction history, every linked card, and an estimated total value converted into the card's main currency.</p><pre>curl -b session.txt http://127.0.0.1:2501/api/account</pre></section>
+<section class="endpoint"><span class="method get">GET</span><code>/api/account/valuation?currency=SGD</code><p>Return the account's estimated total converted into a supported display currency. The account page calls this automatically using the browser's locale region.</p></section>
 <section class="endpoint"><span class="method post">POST</span><code>/api/account/select-card</code><p>Switch the logged-in session to another card linked to the same person. Requires the session CSRF token.</p><pre>curl -b session.txt -X POST http://127.0.0.1:2501/api/account/select-card \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: TOKEN_FROM_LOGIN" \
