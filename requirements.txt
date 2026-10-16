@@ -1,2 +1,4 @@
+# Web application framework
 Flask==3.1.3
+# HTTP client used for reference exchange-rate requests
 requests==2.34.2
