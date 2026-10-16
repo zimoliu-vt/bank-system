@@ -118,6 +118,28 @@ def login():
     return redirect(url_for("account"))
 
 
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "GET":
+        if session.get("card_id"):
+            return redirect(url_for("account"))
+        return render_template("register.html", error=None, values={})
+    values = request.form
+    password = values.get("password", "")
+    if not hmac.compare_digest(password, values.get("confirm_password", "")):
+        return render_template("register.html", error="Passwords do not match", values=values), 400
+    try:
+        card, _unused_api_key = create_card(values.get("holder"), values.get("label"), 0, values.get("currency", "SGD"),
+                                             password=password, created_by="user")
+    except BankError as error:
+        return render_template("register.html", error=str(error), values=values), error.status_code
+    session.clear()
+    session["card_id"] = card["id"]
+    session["csrf_token"] = secrets.token_urlsafe(24)
+    session.permanent = False
+    return redirect(url_for("account"))
+
+
 @app.post("/logout")
 def logout():
     session.clear()
@@ -193,6 +215,7 @@ def api_documentation_json():
             {"method": "GET", "path": "/api/cards/<id>", "auth": "card API key"},
             {"method": "POST", "path": "/api/cards/<id>/transactions", "auth": "card API key"},
             {"method": "POST", "path": "/api/auth/login", "auth": "card number and password"},
+            {"method": "POST", "path": "/api/auth/register", "auth": "none", "description": "Creates a new unlinked card with a server-enforced zero balance and starts a user session"},
             {"method": "GET", "path": "/api/account", "auth": "user session", "description": "Returns the selected card, linked cards, and an estimated total value in the main currency"},
             {"method": "GET", "path": "/api/account/valuation?currency=SGD", "auth": "user session", "description": "Returns the account total converted into a supported display currency"},
             {"method": "POST", "path": "/api/account/select-card", "auth": "user session and CSRF token"},
@@ -239,6 +262,18 @@ def api_login():
     session["card_id"] = card["id"]
     session["csrf_token"] = secrets.token_urlsafe(24)
     return jsonify({"status": "success", "card": card, "linked_cards": get_linked_cards(card["id"]), "csrf_token": session["csrf_token"]})
+
+
+@app.post("/api/auth/register")
+def api_register():
+    data = json_body()
+    card, _unused_api_key = create_card(data.get("holder"), data.get("label"), 0, data.get("currency", "SGD"),
+                                        password=data.get("password"), created_by="user")
+    session.clear()
+    session["card_id"] = card["id"]
+    session["csrf_token"] = secrets.token_urlsafe(24)
+    return jsonify({"status": "success", "card": card, "csrf_token": session["csrf_token"],
+                    "message": "Card created with a zero balance"}), 201
 
 
 @app.get("/api/account")

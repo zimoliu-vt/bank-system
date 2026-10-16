@@ -155,7 +155,16 @@ def select_linked_card(current_card_id, selected_card_id):
         return public_card(selected)
 
 
-def create_card(holder, label, initial_balance=0, currency="SGD", linked_card_id=None):
+def password_hash(password):
+    password = str(password or "")
+    if len(password) < 10:
+        raise BankError("Password must be at least 10 characters")
+    if len(password) > 200:
+        raise BankError("Password is too long")
+    return generate_password_hash(password, method="scrypt")
+
+
+def create_card(holder, label, initial_balance=0, currency="SGD", linked_card_id=None, password=None, created_by="admin"):
     holder, label = str(holder or "").strip(), str(label or "Everyday card").strip()
     currency = str(currency or "SGD").strip().upper()
     if not holder:
@@ -165,6 +174,7 @@ def create_card(holder, label, initial_balance=0, currency="SGD", linked_card_id
     if currency not in ALLOWED_CURRENCIES:
         raise BankError("Unsupported currency")
     balance_cents = cents_from_amount(initial_balance, allow_zero=True)
+    login_hash = password_hash(password) if password is not None else None
     api_key = f"bank_card_{secrets.token_urlsafe(32)}"
     salt, key_hash = hash_key(api_key)
     with DATA_LOCK:
@@ -178,7 +188,9 @@ def create_card(holder, label, initial_balance=0, currency="SGD", linked_card_id
                 raise BankError("Linked cards must have the same card holder name")
             owner_id = linked_card["owner_id"]
         card_number = generate_card_number({item["card_number"] for item in cards})
-        card = {"id": max((item.get("id", 0) for item in cards), default=0) + 1, "owner_id": owner_id, "holder": holder, "label": label, "card_number": card_number, "last4": card_number[-4:], "currency": currency, "balance_cents": balance_cents, "balances": {currency: balance_cents}, "status": "active", "key_salt": salt, "key_hash": key_hash, "created_at": now(), "transactions": []}
+        card = {"id": max((item.get("id", 0) for item in cards), default=0) + 1, "owner_id": owner_id, "holder": holder, "label": label, "card_number": card_number, "last4": card_number[-4:], "currency": currency, "balance_cents": balance_cents, "balances": {currency: balance_cents}, "status": "active", "key_salt": salt, "key_hash": key_hash, "created_by": created_by, "created_at": now(), "transactions": []}
+        if login_hash:
+            card["password_hash"] = login_hash
         cards.append(card)
         atomic_write(CARDS_FILE, cards)
         link_detail = f"; linked to card {linked_card_id}" if linked_card_id is not None and linked_card_id != "" else ""
@@ -187,15 +199,11 @@ def create_card(holder, label, initial_balance=0, currency="SGD", linked_card_id
 
 
 def set_card_login(card_id, password):
-    password = str(password or "")
-    if len(password) < 10:
-        raise BankError("Password must be at least 10 characters")
-    if len(password) > 200:
-        raise BankError("Password is too long")
+    login_hash = password_hash(password)
     with DATA_LOCK:
         cards = read_cards()
         card = find_card(cards, card_id)
-        card["password_hash"] = generate_password_hash(password, method="scrypt")
+        card["password_hash"] = login_hash
         atomic_write(CARDS_FILE, cards)
         write_log("LOGIN_CONFIGURED", card_id, "Card-number login configured")
         return public_card(card)

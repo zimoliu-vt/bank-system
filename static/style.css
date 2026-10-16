@@ -99,6 +99,8 @@ dialog code { display:block; overflow-wrap:anywhere; margin:18px 0; padding:16px
 .auth-card::after { content:""; position:absolute; inset:0 0 auto; height:5px; border-radius:20px 20px 0 0; background:linear-gradient(90deg,var(--gold),var(--green)); }
 .auth-card h1 { margin:13px 0 9px; font-size:44px; letter-spacing:-.045em; }
 .auth-card>p { margin-bottom:28px; color:var(--muted); line-height:1.55; }
+.auth-card .auth-switch { margin:20px 0 0; color:var(--muted); font-size:14px; text-align:center; }
+.auth-switch a { color:var(--green); font-weight:800; }
 .full { width:100%; }
 .account-page { max-width:940px; }
 .account-heading { display:flex; align-items:end; justify-content:space-between; gap:20px; margin-bottom:26px; }
