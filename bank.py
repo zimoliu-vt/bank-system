@@ -98,8 +98,13 @@ def read_cards():
     cards = read_json(CARDS_FILE, [])
     legacy_numbers = {card.get("id"): card.get("card_number") for card in cards if card.get("id") is not None and card.get("card_number")}
     existing = {card.get("card_number") for card in cards if card.get("card_number")}
+    next_internal_id = max((card.get("id", 0) for card in cards if isinstance(card.get("id"), int)), default=0) + 1
     changed = False
     for card in cards:
+        if not isinstance(card.get("id"), int):
+            card["id"] = next_internal_id
+            next_internal_id += 1
+            changed = True
         if len(card.get("card_number", "")) != 8:
             card["card_number"] = generate_card_number(existing)
             card["last4"] = card["card_number"][-4:]
@@ -117,9 +122,6 @@ def read_cards():
                 if other_number:
                     transaction["other_card_number"] = other_number
                 changed = True
-        if "id" in card:
-            card.pop("id")
-            changed = True
     if changed:
         atomic_write(CARDS_FILE, cards)
     logs = read_json(LOGS_FILE, [])
@@ -221,7 +223,7 @@ def create_card(holder, label, initial_balance=0, currency="SGD", linked_card_nu
                 raise BankError("Linked cards must have the same card holder name")
             owner_id = linked_card["owner_id"]
         card_number = generate_card_number({item["card_number"] for item in cards})
-        card = {"owner_id": owner_id, "holder": holder, "label": label, "card_number": card_number, "last4": card_number[-4:], "currency": currency, "balance_cents": balance_cents, "balances": {currency: balance_cents}, "status": "active", "key_salt": salt, "key_hash": key_hash, "created_by": created_by, "created_at": now(), "transactions": []}
+        card = {"id": max((item.get("id", 0) for item in cards), default=0) + 1, "owner_id": owner_id, "holder": holder, "label": label, "card_number": card_number, "last4": card_number[-4:], "currency": currency, "balance_cents": balance_cents, "balances": {currency: balance_cents}, "status": "active", "key_salt": salt, "key_hash": key_hash, "created_by": created_by, "created_at": now(), "transactions": []}
         if login_hash:
             card["password_hash"] = login_hash
         cards.append(card)
