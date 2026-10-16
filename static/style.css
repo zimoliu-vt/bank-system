@@ -105,8 +105,9 @@ dialog code { display:block; overflow-wrap:anywhere; margin:18px 0; padding:16px
 .account-heading h1 { margin-bottom:0; font-size:clamp(42px,6vw,58px); }
 .account-card { position:relative; isolation:isolate; overflow:hidden; padding:38px; border:1px solid rgba(255,255,255,.13); border-radius:28px; color:#fff; background:linear-gradient(135deg,#0a3629,#135740 55%,#217357); box-shadow:0 24px 62px rgba(18,61,45,.22); }
 .account-card::before { content:""; position:absolute; z-index:-1; width:330px; height:330px; right:-115px; top:-175px; border:1px solid rgba(255,255,255,.14); border-radius:50%; box-shadow:0 0 0 52px rgba(255,255,255,.025); }
-.account-card>span,.account-card>strong,.account-balance small,.account-balance b { display:block; }
-.account-card>span { font-weight:750; }
+.account-card>strong,.account-balance small,.account-balance b { display:block; }
+.account-card-top { display:flex; align-items:center; justify-content:space-between; gap:16px; font-weight:750; }
+.account-card-id { padding:6px 10px; border:1px solid rgba(255,255,255,.28); border-radius:999px; background:rgba(255,255,255,.08); color:#e2f0ea; font-size:12px; letter-spacing:.03em; white-space:nowrap; }
 .account-card>strong { margin-top:26px; font:650 23px "SFMono-Regular",Consolas,monospace; letter-spacing:.14em; }
 .account-balance { margin-top:54px; }
 .account-balance small { color:#cfe3dc; font-weight:650; }

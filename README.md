@@ -30,6 +30,7 @@ The development server listens on all local interfaces. Keep port 2501 blocked f
 - Users log in with their generated 8-digit demo card number and a hashed password configured by an administrator.
 - When a new card has the same holder name, management asks whether it belongs to the same person. Linked cards appear in a chooser after login.
 - Browser and API payments require an authenticated session plus a CSRF token.
+- Payment recipients can be identified by either their short Card ID or full 8-digit card number.
 - Payments can be sent from any currency balance the sender owns. Cross-currency payments are never exchanged: the recipient receives the same numeric amount in the selected currency as a separate balance.
 - Users can explicitly exchange money between their own balances using the latest available Frankfurter reference rate.
 - Supported currencies: SGD, USD, EUR, GBP, and CNY.

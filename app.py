@@ -183,7 +183,7 @@ def api_documentation_json():
             {"method": "POST", "path": "/api/auth/login", "auth": "card number and password"},
             {"method": "GET", "path": "/api/account", "auth": "user session", "description": "Returns the selected card and all linked cards"},
             {"method": "POST", "path": "/api/account/select-card", "auth": "user session and CSRF token"},
-            {"method": "POST", "path": "/api/payments", "auth": "user session and CSRF token"},
+            {"method": "POST", "path": "/api/payments", "auth": "user session and CSRF token", "description": "Accepts recipient as either a Card ID or 8-digit card number; legacy to_card_id is also supported"},
             {"method": "GET", "path": "/api/exchange/quote", "auth": "user session"},
             {"method": "POST", "path": "/api/exchange", "auth": "user session and CSRF token"},
             {"method": "GET", "path": "/admin/cards", "auth": "admin key"},
@@ -251,7 +251,8 @@ def api_select_account_card():
 def user_pay():
     verify_csrf()
     data = json_body()
-    payment = make_payment(session["card_id"], data.get("to_card_id"), data.get("amount"), data.get("description", ""), data.get("currency"))
+    recipient = data.get("recipient", data.get("to_card_number", data.get("to_card_id")))
+    payment = make_payment(session["card_id"], recipient, data.get("amount"), data.get("description", ""), data.get("currency"))
     return jsonify({"status": "success", **payment}), 201
 
 
